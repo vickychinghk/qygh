@@ -52,3 +52,27 @@ paste/storage service.
 
 Before replacing production `.env`, back it up under `/www/backup/`. After
 replacement, set file permissions to `600` and restart `qygh-next`.
+
+## Runtime Uploads
+
+Feishu sync writes downloaded assets into:
+
+- `/www/wwwroot/qygh.vickyching.com/public/uploads/`
+
+Production must serve `/uploads/` directly from Nginx instead of relying on
+Next.js static handling. Next.js can return cached 404 responses for files that
+are created after the server process has already started.
+
+The `qygh.vickyching.com` Nginx server block should include this rule before the
+catch-all proxy location:
+
+```nginx
+location ^~ /uploads/ {
+    alias /www/wwwroot/qygh.vickyching.com/public/uploads/;
+    expires 30d;
+    add_header Cache-Control "public, max-age=2592000";
+    access_log off;
+}
+```
+
+After changing this rule, run `nginx -t` and reload Nginx.
