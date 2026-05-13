@@ -5,6 +5,7 @@ import {
   addSubmissionToIssue,
   addComment,
   batchAddFilteredSubmissionsToIssue,
+  batchRemoveFilteredSubmissionsFromIssue,
   createIssue,
   deleteComment,
   moveIssueItem,
@@ -72,6 +73,13 @@ export async function batchAddFilteredSubmissionsToIssueAction(
 ) {
   await requireCurrentUser();
   return batchAddFilteredSubmissionsToIssue(issueId, filter);
+}
+
+export async function batchRemoveFilteredSubmissionsFromIssueAction(
+  filter: SubmissionFilter,
+) {
+  await requireCurrentUser();
+  return batchRemoveFilteredSubmissionsFromIssue(filter);
 }
 
 export async function moveSubmissionToIssueAction(

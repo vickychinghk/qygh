@@ -25,6 +25,7 @@ This production `.env` should contain the union of local `.env` and `.env.local`
 
 - `DATABASE_URL`
 - `SESSION_SECRET`
+- `REGISTRATION_INVITE_CODE`
 - `FEISHU_APP_ID`
 - `FEISHU_APP_SECRET`
 - `FEISHU_BITABLE_APP_TOKEN`
@@ -42,6 +43,9 @@ Bitable field names differ from the code defaults:
 - `FEISHU_FIELD_SUBMITTED_AT`
 - `FEISHU_FIELD_IMAGES`
 - `FEISHU_MAX_IMAGE_DOWNLOADS`
+
+`REGISTRATION_INVITE_CODE` accepts one invite code, or multiple comma-separated
+codes. Production registration fails closed when this value is missing.
 
 ## Sync Procedure
 

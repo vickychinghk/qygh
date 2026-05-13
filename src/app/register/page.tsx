@@ -23,7 +23,9 @@ export default async function RegisterPage({
     <main className="flex min-h-dvh items-center justify-center bg-secondary px-5 py-8">
       <section className="w-full max-w-sm rounded-lg border bg-background p-5 shadow-sm">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold tracking-normal">创建编辑账号</h1>
+          <h1 className="text-xl font-semibold tracking-normal">
+            MAKE QYGH 迷惑行为 GAG
+          </h1>
           <p className="text-sm text-muted-foreground">
             所有账号权限一致，注册后即可进入编辑台。
           </p>
@@ -36,7 +38,7 @@ export default async function RegisterPage({
               id="username"
               name="username"
               autoComplete="username"
-              placeholder="editor"
+              placeholder="输入用户名"
               required
             />
             <p className="text-xs text-muted-foreground">
@@ -50,6 +52,17 @@ export default async function RegisterPage({
               name="displayName"
               autoComplete="name"
               placeholder="你的名字"
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="inviteCode">注册口令</Label>
+            <Input
+              id="inviteCode"
+              name="inviteCode"
+              type="text"
+              autoComplete="off"
+              placeholder="输入注册口令"
               required
             />
           </div>

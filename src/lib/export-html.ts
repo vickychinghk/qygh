@@ -163,7 +163,7 @@ export function buildIssueHtml(issue: ExportIssue) {
     shadow: false,
   });
   const body = items
-    .map((item, index) => {
+    .map((item) => {
       const comment = item.finalComment ?? item.submitterQuote;
       const sourceNote = item.sourceNote?.trim() || "来自粉丝投稿";
       const images = item.images

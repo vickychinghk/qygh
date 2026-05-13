@@ -41,7 +41,24 @@ export function selectFinalCommentState<T extends CommentSelectionState>(
 }
 
 export function formatDefaultIssueTitle(date = new Date()) {
-  return `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()} 期`;
+  return `${date.getFullYear()}年${date.getMonth() + 1}月刊`;
+}
+
+export function getUniqueIssueTitle(baseTitle: string, existingTitles: string[]) {
+  const trimmed = baseTitle.trim();
+  const title = trimmed || formatDefaultIssueTitle();
+  const existing = new Set(existingTitles.map((item) => item.trim()));
+
+  if (!existing.has(title)) {
+    return title;
+  }
+
+  let suffix = 1;
+  while (existing.has(`${title}_${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${title}_${suffix}`;
 }
 
 export function sortSubmissionsBySerialDesc<T extends { serialNumber: string | null }>(
@@ -83,7 +100,7 @@ export function getSubmissionIssueLabel(
 ) {
   return issueItems[0]?.issue.title
     ? `已加入 ${issueItems[0].issue.title}`
-    : "未分配任何期数";
+    : "未分配任何刊数";
 }
 
 export function hasUserReacted(
@@ -168,23 +185,59 @@ export function reorderIssueItemsToPosition<T extends { id: string; sortOrder: n
     return sorted;
   }
 
-  const clamped = Math.max(1, Math.min(targetPosition, sorted.length));
+  const start = targetPosition <= 0 ? targetPosition : 1;
   const withoutCurrent = sorted.filter((item) => item.id !== issueItemId);
-  withoutCurrent.splice(clamped - 1, 0, current);
+  const targetIndex = Math.max(
+    0,
+    Math.min(targetPosition - start, withoutCurrent.length),
+  );
+  withoutCurrent.splice(targetIndex, 0, current);
 
-  return withoutCurrent.map((item, index) => ({
+  return renumberIssueItems(withoutCurrent, start);
+}
+
+export function moveIssueItemInDirection<T extends { id: string; sortOrder: number }>(
+  items: T[],
+  issueItemId: string,
+  direction: "up" | "down",
+) {
+  const sorted = [...items].sort((a, b) => a.sortOrder - b.sortOrder);
+  const currentIndex = sorted.findIndex((item) => item.id === issueItemId);
+  const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+
+  if (
+    currentIndex < 0 ||
+    targetIndex < 0 ||
+    targetIndex >= sorted.length
+  ) {
+    return renumberIssueItems(sorted, getIssueOrderStart(sorted));
+  }
+
+  const next = [...sorted];
+  [next[currentIndex], next[targetIndex]] = [next[targetIndex], next[currentIndex]];
+
+  return renumberIssueItems(next, getIssueOrderStart(sorted));
+}
+
+function getIssueOrderStart(items: { sortOrder: number }[]) {
+  const smallest = Math.min(...items.map((item) => item.sortOrder));
+  return Number.isFinite(smallest) && smallest <= 0 ? Math.trunc(smallest) : 1;
+}
+
+function renumberIssueItems<T extends { sortOrder: number }>(items: T[], start: number) {
+  return items.map((item, index) => ({
     ...item,
-    sortOrder: index + 1,
+    sortOrder: start + index,
   }));
 }
 
 export function parseIssueSortOrderInput(value: string) {
   const trimmed = value.trim();
-  if (!trimmed || !/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+  if (!trimmed || !/^-?\d+$/.test(trimmed)) {
     return null;
   }
 
-  const parsed = Number.parseFloat(trimmed);
+  const parsed = Number.parseInt(trimmed, 10);
   return Number.isFinite(parsed) ? parsed : null;
 }
 

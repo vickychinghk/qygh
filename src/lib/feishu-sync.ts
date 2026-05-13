@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
-  buildAssetPaths,
   normalizeAssetBuffer,
   type NormalizedAsset,
 } from "@/lib/image-pipeline";
@@ -1029,26 +1028,6 @@ async function persistFailedFeishuAsset(
     processingStatus: "FAILED",
     processingError: message,
   } as FeishuSubmissionImageInput;
-}
-
-function predictProcessedPath(image: FeishuSubmissionImageInput) {
-  const mime = image.remoteMimeType?.toLowerCase();
-  const extension = image.fileName.split(".").pop()?.toLowerCase();
-  const outputExtension =
-    mime?.startsWith("video/") || ["mp4", "mov", "m4v", "avi", "webm"].includes(extension ?? "")
-      ? extension || "bin"
-      : mime === "image/gif" || extension === "gif"
-        ? "gif"
-        : mime === "image/png" || extension === "png"
-          ? "png"
-          : "jpg";
-
-  return buildAssetPaths({
-    source: "feishu",
-    token: image.fileToken,
-    fileName: image.fileName,
-    outputExtension,
-  }).processedPath;
 }
 
 function inferTokenFromPath(path: string) {

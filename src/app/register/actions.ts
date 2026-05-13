@@ -9,6 +9,7 @@ export async function registerAction(formData: FormData) {
     displayName: String(formData.get("displayName") ?? ""),
     password: String(formData.get("password") ?? ""),
     confirmPassword: String(formData.get("confirmPassword") ?? ""),
+    inviteCode: String(formData.get("inviteCode") ?? ""),
   });
 
   if (!result.ok) {

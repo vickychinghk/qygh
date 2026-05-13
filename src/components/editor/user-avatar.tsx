@@ -12,7 +12,7 @@ export function UserAvatar({
 
   return (
     <Avatar className={cn("size-8 border", className)}>
-      <AvatarFallback>{fallback}</AvatarFallback>
+      <AvatarFallback className="text-base leading-none">{fallback}</AvatarFallback>
     </Avatar>
   );
 }

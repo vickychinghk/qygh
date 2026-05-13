@@ -6,6 +6,9 @@ import {
   applySubmissionFilter,
   filterDisplayableImages,
   formatDefaultIssueTitle,
+  getUniqueIssueTitle,
+  moveIssueItemInDirection,
+  reorderIssueItemsToPosition,
   sortSubmissionsBySerialDesc,
   type SubmissionFilter,
 } from "@/lib/selection-rules";
@@ -85,9 +88,16 @@ function filterCachedImages<T extends { localPath: string }>(images: T[]) {
 
 export async function createIssue(title = formatDefaultIssueTitle()) {
   const now = new Date();
+  const existingIssues = await prisma.issue.findMany({
+    select: { title: true },
+  });
+  const uniqueTitle = getUniqueIssueTitle(
+    title,
+    existingIssues.map((issue) => issue.title),
+  );
   const issue = await prisma.issue.create({
     data: {
-      title,
+      title: uniqueTitle,
       monthKey: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
         2,
         "0",
@@ -103,6 +113,17 @@ export async function renameIssue(issueId: string, title: string) {
   const trimmed = title.trim();
   if (!trimmed) {
     return;
+  }
+
+  const duplicate = await prisma.issue.findFirst({
+    where: {
+      title: trimmed,
+      id: { not: issueId },
+    },
+    select: { id: true },
+  });
+  if (duplicate) {
+    throw new Error("刊数名字不能重复");
   }
 
   await prisma.issue.update({
@@ -211,6 +232,29 @@ export async function batchAddFilteredSubmissionsToIssue(
 
   revalidatePath("/app");
   return { count: selectedIds.length };
+}
+
+export async function batchRemoveFilteredSubmissionsFromIssue(filter: SubmissionFilter) {
+  const submissions = await prisma.submission.findMany({
+    include: {
+      issueItems: true,
+    },
+  });
+  const selected = applySubmissionFilter(submissions, filter);
+
+  if (selected.length === 0) {
+    return { count: 0 };
+  }
+
+  const selectedIds = selected.map((submission) => submission.id);
+  const result = await prisma.issueItem.deleteMany({
+    where: {
+      submissionId: { in: selectedIds },
+    },
+  });
+
+  revalidatePath("/app");
+  return { count: result.count };
 }
 
 export async function moveSubmissionToIssue(submissionId: string, issueId: string) {
@@ -439,31 +483,21 @@ export async function moveIssueItem(issueItemId: string, direction: "up" | "down
     return;
   }
 
-  const neighbor = await prisma.issueItem.findFirst({
-    where: {
-      issueId: current.issueId,
-      sortOrder:
-        direction === "up"
-          ? { lt: current.sortOrder }
-          : { gt: current.sortOrder },
-    },
-    orderBy: { sortOrder: direction === "up" ? "desc" : "asc" },
+  const items = await prisma.issueItem.findMany({
+    where: { issueId: current.issueId },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true, sortOrder: true },
   });
+  const nextItems = moveIssueItemInDirection(items, issueItemId, direction);
 
-  if (!neighbor) {
-    return;
-  }
-
-  await prisma.$transaction([
-    prisma.issueItem.update({
-      where: { id: current.id },
-      data: { sortOrder: neighbor.sortOrder },
-    }),
-    prisma.issueItem.update({
-      where: { id: neighbor.id },
-      data: { sortOrder: current.sortOrder },
-    }),
-  ]);
+  await prisma.$transaction(
+    nextItems.map((item) =>
+      prisma.issueItem.update({
+        where: { id: item.id },
+        data: { sortOrder: item.sortOrder },
+      }),
+    ),
+  );
 
   revalidatePath("/app");
 }
@@ -476,10 +510,29 @@ export async function updateIssueItemSortOrder(
     return;
   }
 
-  await prisma.issueItem.update({
+  const current = await prisma.issueItem.findUnique({
     where: { id: issueItemId },
-    data: { sortOrder },
+    select: { issueId: true },
   });
+  if (!current) {
+    return;
+  }
+
+  const items = await prisma.issueItem.findMany({
+    where: { issueId: current.issueId },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true, sortOrder: true },
+  });
+  const nextItems = reorderIssueItemsToPosition(items, issueItemId, Math.trunc(sortOrder));
+
+  await prisma.$transaction(
+    nextItems.map((item) =>
+      prisma.issueItem.update({
+        where: { id: item.id },
+        data: { sortOrder: item.sortOrder },
+      }),
+    ),
+  );
 
   revalidatePath("/app");
 }

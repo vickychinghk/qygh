@@ -4,8 +4,10 @@ import {
   canDeleteComment,
   filterDisplayableImages,
   formatDefaultIssueTitle,
+  getUniqueIssueTitle,
   hasUserReacted,
   isWebDisplayableImage,
+  moveIssueItemInDirection,
   getSubmissionIssueLabel,
   parseIssueSortOrderInput,
   SCHOOL_OPTIONS,
@@ -110,10 +112,26 @@ describe("isWebDisplayableImage", () => {
 });
 
 describe("formatDefaultIssueTitle", () => {
-  it("uses the creation date as the default editable issue name", () => {
+  it("uses the creation month as the default editable publication name", () => {
     expect(formatDefaultIssueTitle(new Date("2026-05-12T09:30:00+08:00"))).toBe(
-      "2026.5.12 期",
+      "2026年5月刊",
     );
+  });
+});
+
+describe("getUniqueIssueTitle", () => {
+  it("keeps a title when no existing publication uses it", () => {
+    expect(getUniqueIssueTitle("2026年5月刊", ["2026年4月刊"])).toBe("2026年5月刊");
+  });
+
+  it("adds the next underscore suffix when publication names repeat", () => {
+    expect(
+      getUniqueIssueTitle("2026年5月刊", [
+        "2026年5月刊",
+        "2026年5月刊_1",
+        "2026年5月刊_2",
+      ]),
+    ).toBe("2026年5月刊_3");
   });
 });
 
@@ -137,13 +155,13 @@ describe("getSubmissionIssueLabel", () => {
   it("shows the single issue a submission belongs to", () => {
     expect(
       getSubmissionIssueLabel([
-        { issue: { title: "2026.5.12 期" } },
+        { issue: { title: "2026年5月刊" } },
       ]),
-    ).toBe("已加入 2026.5.12 期");
+    ).toBe("已加入 2026年5月刊");
   });
 
   it("shows an unassigned label when a submission belongs to no issue", () => {
-    expect(getSubmissionIssueLabel([])).toBe("未分配任何期数");
+    expect(getSubmissionIssueLabel([])).toBe("未分配任何刊数");
   });
 });
 
@@ -222,7 +240,7 @@ describe("applySubmissionFilter", () => {
 });
 
 describe("reorderIssueItemsToPosition", () => {
-  it("moves one issue item to a one-based target position and renormalizes order", () => {
+  it("moves one issue item to a one-based target position and renormalizes order from 1", () => {
     const next = reorderIssueItemsToPosition(
       [
         { id: "a", sortOrder: 1 },
@@ -239,18 +257,72 @@ describe("reorderIssueItemsToPosition", () => {
       { id: "b", sortOrder: 3 },
     ]);
   });
+
+  it("allows zero and negative starting numbers while keeping a complete integer sequence", () => {
+    expect(
+      reorderIssueItemsToPosition(
+        [
+          { id: "a", sortOrder: 1 },
+          { id: "b", sortOrder: 2 },
+          { id: "c", sortOrder: 3 },
+        ],
+        "c",
+        0,
+      ),
+    ).toEqual([
+      { id: "c", sortOrder: 0 },
+      { id: "a", sortOrder: 1 },
+      { id: "b", sortOrder: 2 },
+    ]);
+
+    expect(
+      reorderIssueItemsToPosition(
+        [
+          { id: "a", sortOrder: 1 },
+          { id: "b", sortOrder: 2 },
+          { id: "c", sortOrder: 3 },
+        ],
+        "b",
+        -1,
+      ),
+    ).toEqual([
+      { id: "b", sortOrder: -1 },
+      { id: "a", sortOrder: 0 },
+      { id: "c", sortOrder: 1 },
+    ]);
+  });
+});
+
+describe("moveIssueItemInDirection", () => {
+  it("moves an item up or down and renormalizes the full publication order", () => {
+    expect(
+      moveIssueItemInDirection(
+        [
+          { id: "a", sortOrder: 0 },
+          { id: "b", sortOrder: 2 },
+          { id: "c", sortOrder: 5 },
+        ],
+        "c",
+        "up",
+      ),
+    ).toEqual([
+      { id: "a", sortOrder: 0 },
+      { id: "c", sortOrder: 1 },
+      { id: "b", sortOrder: 2 },
+    ]);
+  });
 });
 
 describe("parseIssueSortOrderInput", () => {
-  it("accepts negative, zero, integer, and decimal issue numbers", () => {
+  it("accepts negative, zero, and integer publication numbers", () => {
     expect(parseIssueSortOrderInput("-2")).toBe(-2);
     expect(parseIssueSortOrderInput("0")).toBe(0);
-    expect(parseIssueSortOrderInput("36.5")).toBe(36.5);
     expect(parseIssueSortOrderInput(" 37 ")).toBe(37);
   });
 
-  it("rejects empty and non-numeric issue numbers", () => {
+  it("rejects empty, decimal, and non-numeric publication numbers", () => {
     expect(parseIssueSortOrderInput("")).toBeNull();
+    expect(parseIssueSortOrderInput("36.5")).toBeNull();
     expect(parseIssueSortOrderInput("abc")).toBeNull();
     expect(parseIssueSortOrderInput("36abc")).toBeNull();
   });

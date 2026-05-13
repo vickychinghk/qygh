@@ -22,9 +22,11 @@ export default async function LoginPage({
     <main className="flex min-h-dvh items-center justify-center bg-secondary px-5 py-8">
       <section className="w-full max-w-sm rounded-lg border bg-background p-5 shadow-sm">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold tracking-normal">全元光滑迷惑行为</h1>
+          <h1 className="text-xl font-semibold tracking-normal">
+            MAKE QYGH 迷惑行为 GAG
+          </h1>
           <p className="text-sm text-muted-foreground">
-            登录编辑台，整理投稿、吐槽语和推送期数。
+            登录编辑台，整理投稿、吐槽语和推送刊数。
           </p>
         </div>
 
@@ -35,7 +37,7 @@ export default async function LoginPage({
               id="username"
               name="username"
               autoComplete="username"
-              placeholder="editor"
+              placeholder="输入用户名"
               required
             />
           </div>

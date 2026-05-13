@@ -18,6 +18,10 @@ export const DEFAULT_SUBMISSION_FILTER: Required<SubmissionFilter> = {
 };
 
 type Issue = { id: string; title: string };
+type BatchIntent =
+  | { kind: "add"; issueId: string; issueTitle: string }
+  | { kind: "remove" };
+type MathChallenge = { left: number; right: number };
 
 export function FilterSheet({
   filter,
@@ -25,15 +29,22 @@ export function FilterSheet({
   onApply,
   onClose,
   onBatchAdd,
+  onBatchRemove,
 }: {
   filter: Required<SubmissionFilter>;
   issues: Issue[];
   onApply: (filter: Required<SubmissionFilter>) => void;
   onClose: () => void;
   onBatchAdd: (issueId: string, filter: Required<SubmissionFilter>) => void;
+  onBatchRemove: (filter: Required<SubmissionFilter>) => void;
 }) {
   const [draft, setDraft] = useState(filter);
   const [batchOpen, setBatchOpen] = useState(false);
+  const [batchIntent, setBatchIntent] = useState<BatchIntent | null>(null);
+  const [challenge, setChallenge] = useState<MathChallenge>(() =>
+    createMathChallenge(),
+  );
+  const [challengeAnswer, setChallengeAnswer] = useState("");
 
   const activeCount = useMemo(
     () =>
@@ -157,6 +168,43 @@ export function FilterSheet({
             </div>
           </Field>
 
+          <Segmented
+            label="授权状态"
+            value={draft.authorized}
+            options={[
+              ["all", "全部"],
+              ["yes", "已授权"],
+              ["no", "未授权"],
+            ]}
+            onChange={(authorized) =>
+              setDraft((current) => ({ ...current, authorized }))
+            }
+          />
+          <Segmented
+            label="刊数归属"
+            value={draft.assignStatus}
+            options={[
+              ["all", "全部"],
+              ["assigned", "已分配"],
+              ["unassigned", "未分配"],
+            ]}
+            onChange={(assignStatus) =>
+              setDraft((current) => ({ ...current, assignStatus }))
+            }
+          />
+          <Segmented
+            label="采用状态"
+            value={draft.adoptStatus}
+            options={[
+              ["all", "全部"],
+              ["adopted", "已采用"],
+              ["notAdopted", "未采用"],
+            ]}
+            onChange={(adoptStatus) =>
+              setDraft((current) => ({ ...current, adoptStatus }))
+            }
+          />
+
           <Field label="飞书序号范围">
             <div className="flex items-center gap-2">
               <input
@@ -188,43 +236,6 @@ export function FilterSheet({
               />
             </div>
           </Field>
-
-          <Segmented
-            label="授权状态"
-            value={draft.authorized}
-            options={[
-              ["all", "全部"],
-              ["yes", "已授权"],
-              ["no", "未授权"],
-            ]}
-            onChange={(authorized) =>
-              setDraft((current) => ({ ...current, authorized }))
-            }
-          />
-          <Segmented
-            label="期数归属"
-            value={draft.assignStatus}
-            options={[
-              ["all", "全部"],
-              ["assigned", "已分配"],
-              ["unassigned", "未分配"],
-            ]}
-            onChange={(assignStatus) =>
-              setDraft((current) => ({ ...current, assignStatus }))
-            }
-          />
-          <Segmented
-            label="采用状态"
-            value={draft.adoptStatus}
-            options={[
-              ["all", "全部"],
-              ["adopted", "已采用"],
-              ["notAdopted", "未采用"],
-            ]}
-            onChange={(adoptStatus) =>
-              setDraft((current) => ({ ...current, adoptStatus }))
-            }
-          />
         </div>
 
         <div className="h-px flex-shrink-0 bg-[#F0F0F0]" />
@@ -280,13 +291,29 @@ export function FilterSheet({
           {batchOpen ? (
             <div className="mt-2 overflow-hidden rounded-xl bg-white shadow-[0_6px_18px_rgba(31,35,41,0.08)]">
               <p style={{ fontSize: 11, color: "#FD80C2", padding: "8px 12px 4px", fontWeight: 500 }}>
-                选择目标期数（将应用当前草稿筛选条件）：
+                选择目标刊数（将应用当前筛选条件）：
               </p>
+              <button
+                type="button"
+                onClick={() => openBatchConfirm({ kind: "remove" })}
+                className="flex w-full items-center justify-between border-t border-[#F0F0F0] px-4 py-2.5 transition-colors active:bg-[#FFF0F8]"
+              >
+                <span style={{ fontSize: 13, color: "#333", fontWeight: 500 }}>
+                  移除刊数归属
+                </span>
+                <X size={13} style={{ color: "#FD80C2", opacity: 0.55 }} />
+              </button>
               {issues.map((issue) => (
                 <button
                   key={issue.id}
                   type="button"
-                  onClick={() => onBatchAdd(issue.id, draft)}
+                  onClick={() =>
+                    openBatchConfirm({
+                      kind: "add",
+                      issueId: issue.id,
+                      issueTitle: issue.title,
+                    })
+                  }
                   className="flex w-full items-center justify-between border-t border-[#F0F0F0] px-4 py-2.5 transition-colors active:bg-[#FFF0F8]"
                 >
                   <span style={{ fontSize: 13, color: "#333", fontWeight: 500 }}>
@@ -298,6 +325,125 @@ export function FilterSheet({
             </div>
           ) : null}
         </footer>
+      </section>
+      {batchIntent ? (
+        <BatchConfirmDialog
+          intent={batchIntent}
+          challenge={challenge}
+          answer={challengeAnswer}
+          onAnswerChange={setChallengeAnswer}
+          onCancel={() => setBatchIntent(null)}
+          onConfirm={() => {
+            if (challengeAnswer.trim() !== String(challenge.left + challenge.right)) {
+              return;
+            }
+
+            if (batchIntent.kind === "add") {
+              onBatchAdd(batchIntent.issueId, draft);
+            } else {
+              onBatchRemove(draft);
+            }
+          }}
+        />
+      ) : null}
+    </div>
+  );
+
+  function openBatchConfirm(intent: BatchIntent) {
+    setChallenge(createMathChallenge());
+    setChallengeAnswer("");
+    setBatchIntent(intent);
+  }
+}
+
+function createMathChallenge(): MathChallenge {
+  return {
+    left: Math.floor(Math.random() * 8) + 2,
+    right: Math.floor(Math.random() * 8) + 2,
+  };
+}
+
+function BatchConfirmDialog({
+  intent,
+  challenge,
+  answer,
+  onAnswerChange,
+  onCancel,
+  onConfirm,
+}: {
+  intent: BatchIntent;
+  challenge: MathChallenge;
+  answer: string;
+  onAnswerChange: (value: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const expected = challenge.left + challenge.right;
+  const valid = answer.trim() === String(expected);
+  const title = intent.kind === "add" ? "确认批量移动刊数" : "确认批量移除归属";
+  const description =
+    intent.kind === "add"
+      ? `这会把当前筛选结果加入「${intent.issueTitle}」，并移除它们原有的其他刊数归属。`
+      : "这会移除当前筛选结果的刊数归属。";
+
+  return (
+    <div className="absolute inset-0 z-[70] flex items-center justify-center px-6">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/35"
+        aria-label="取消批量操作确认"
+        onClick={onCancel}
+      />
+      <section className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-[#111]">{title}</h2>
+            <p className="mt-2 text-sm leading-6 text-[#666]">{description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="grid size-7 flex-shrink-0 place-items-center rounded-full bg-[#F5F5F5]"
+            aria-label="关闭批量操作确认"
+          >
+            <X size={14} className="text-[#666]" />
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-[#F0F0F0] bg-[#FAFAFA] p-3">
+          <label className="block">
+            <span className="text-xs font-medium text-[#888]">
+              输入计算结果：{challenge.left} + {challenge.right}
+            </span>
+            <input
+              value={answer}
+              onChange={(event) => onAnswerChange(event.target.value)}
+              inputMode="numeric"
+              className="mt-2 w-full rounded-lg border border-[#DEE0E3] bg-white px-3 py-2 text-sm text-[#111] outline-none focus:border-[#FD80C2]"
+              placeholder="答案"
+              autoFocus
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-xl bg-[#F5F5F5] py-2.5 text-sm font-medium text-[#666]"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            disabled={!valid}
+            onClick={onConfirm}
+            className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+            style={{ background: "#FD80C2" }}
+          >
+            确认
+          </button>
+        </div>
       </section>
     </div>
   );

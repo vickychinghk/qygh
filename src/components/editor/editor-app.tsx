@@ -11,6 +11,7 @@ import {
   Info,
   Inbox,
   LogOut,
+  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
@@ -32,6 +33,7 @@ import {
   addSubmissionImageAction,
   addSubmissionToIssueAction,
   batchAddFilteredSubmissionsToIssueAction,
+  batchRemoveFilteredSubmissionsFromIssueAction,
   createIssueAction,
   deleteCommentAction,
   inspectDamagedFeishuImagesAction,
@@ -52,7 +54,7 @@ import {
 } from "@/app/app/actions";
 import { cn } from "@/lib/utils";
 
-type Overlay = "none" | "profile" | "issue" | "filter" | "sync";
+type Overlay = "none" | "profile" | "issue" | "filter" | "sync" | "about";
 
 type SyncReport = {
   status: "SUCCESS" | "PARTIAL" | "FAILED";
@@ -113,6 +115,7 @@ export function EditorApp({
   const [overlay, setOverlay] = useState<Overlay>("none");
   const [tab, setTab] = useState<"library" | "issue">("library");
   const [renameValue, setRenameValue] = useState(snapshot.issue?.title ?? "");
+  const [issueError, setIssueError] = useState<string | null>(null);
   const [filter, setFilter] =
     useState<Required<SubmissionFilter>>(DEFAULT_SUBMISSION_FILTER);
   const [syncing, setSyncing] = useState(false);
@@ -195,7 +198,7 @@ export function EditorApp({
       <div className="flex flex-shrink-0 border-b border-[#F0F0F0] bg-white">
         {[
           ["library", "投稿库"],
-          ["issue", "期数"],
+          ["issue", "刊数"],
         ].map(([value, label]) => {
           const active = tab === value;
           return (
@@ -234,7 +237,7 @@ export function EditorApp({
             className="flex items-center gap-1.5 px-4 py-3 transition-colors active:bg-[#FFF0F8]"
           >
             <span style={{ fontSize: 15, fontWeight: 600, color: "#111" }}>
-              {snapshot.issue?.title ?? "未选择期数"}
+              {snapshot.issue?.title ?? "未选择刊数"}
             </span>
             <ChevronDown size={15} style={{ color: "#FD80C2" }} />
           </button>
@@ -385,7 +388,7 @@ export function EditorApp({
             ))}
           </Feed>
         ) : (
-          <EmptyState title="当前期数没有投稿" description="从投稿库中加入投稿" />
+          <EmptyState title="当前刊数没有投稿" description="从投稿库中加入投稿" />
         )}
         </div>
       </section>
@@ -402,6 +405,7 @@ export function EditorApp({
           currentUser={currentUser}
           onClose={() => setOverlay("none")}
           onOpenSync={() => setOverlay("sync")}
+          onOpenAbout={() => setOverlay("about")}
         />
       ) : null}
       {overlay === "issue" ? (
@@ -409,25 +413,22 @@ export function EditorApp({
           issues={snapshot.issues}
           currentIssueId={selectedIssueId}
           renameValue={renameValue}
+          error={issueError}
           onRenameValueChange={setRenameValue}
-          onClose={() => setOverlay("none")}
-          onRename={() =>
-            selectedIssueId
-              ? run(() => renameIssueAction(selectedIssueId, renameValue))
-              : undefined
-          }
+          onClose={() => {
+            setIssueError(null);
+            setOverlay("none");
+          }}
+          onRename={handleRenameIssue}
           onSelectIssue={(issueId) => {
             setOverlay("none");
             router.push(`/app?issue=${issueId}`);
           }}
-          onCreateIssue={() =>
-            startTransition(async () => {
-              const issueId = await createIssueAction();
-              setOverlay("none");
-              router.push(`/app?issue=${issueId}`);
-            })
-          }
+          onCreateIssue={handleCreateIssue}
         />
+      ) : null}
+      {overlay === "about" ? (
+        <AboutDialog onClose={() => setOverlay("none")} />
       ) : null}
       {overlay === "filter" ? (
         <FilterSheet
@@ -438,6 +439,13 @@ export function EditorApp({
           onBatchAdd={(issueId, draftFilter) => {
             startTransition(async () => {
               await batchAddFilteredSubmissionsToIssueAction(issueId, draftFilter);
+            });
+            setFilter(draftFilter);
+            setOverlay("none");
+          }}
+          onBatchRemove={(draftFilter) => {
+            startTransition(async () => {
+              await batchRemoveFilteredSubmissionsFromIssueAction(draftFilter);
             });
             setFilter(draftFilter);
             setOverlay("none");
@@ -468,6 +476,32 @@ export function EditorApp({
   function run(action: () => Promise<void>) {
     startTransition(() => {
       void action();
+    });
+  }
+
+  function handleRenameIssue() {
+    if (!selectedIssueId) {
+      return;
+    }
+
+    setIssueError(null);
+    startTransition(async () => {
+      try {
+        await renameIssueAction(selectedIssueId, renameValue);
+        setOverlay("none");
+        router.refresh();
+      } catch (error) {
+        setIssueError(error instanceof Error ? error.message : "重命名失败");
+      }
+    });
+  }
+
+  function handleCreateIssue() {
+    setIssueError(null);
+    startTransition(async () => {
+      const issueId = await createIssueAction();
+      setOverlay("none");
+      router.push(`/app?issue=${issueId}`);
     });
   }
 
@@ -595,17 +629,17 @@ function TopBar({
         style={{
           fontWeight: 700,
           fontSize: 18,
-          letterSpacing: "-0.3px",
+          letterSpacing: 0,
           color: "#111",
         }}
       >
-        全元光滑迷惑行为
+        全元光滑 · 迷惑行为
       </span>
       <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={onAvatarClick}
-          className="flex size-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white transition-transform active:scale-95"
+          className="flex size-8 flex-shrink-0 items-center justify-center rounded-full text-base font-semibold leading-none text-white transition-transform active:scale-95"
           style={{ background: "linear-gradient(135deg, #FD80C2 0%, #F06292 100%)" }}
           aria-label="个人设置"
         >
@@ -675,13 +709,13 @@ function ProfileMenu({
   currentUser,
   onClose,
   onOpenSync,
+  onOpenAbout,
 }: {
   currentUser: { displayName: string; username: string };
   onClose: () => void;
   onOpenSync: () => void;
+  onOpenAbout: () => void;
 }) {
-  const [aboutOpen, setAboutOpen] = useState(false);
-
   return (
     <div className="absolute inset-0 z-50 flex flex-col">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
@@ -690,7 +724,7 @@ function ProfileMenu({
         <div className="bg-gradient-to-br from-[#FFF0F8] to-[#FFF] px-4 py-4">
           <div className="flex items-center gap-3">
             <div
-              className="flex size-12 flex-shrink-0 items-center justify-center rounded-full text-lg font-semibold text-white"
+              className="flex size-14 flex-shrink-0 items-center justify-center rounded-full text-2xl font-semibold text-white"
               style={{ background: "linear-gradient(135deg, #FD80C2 0%, #F06292 100%)" }}
             >
               {currentUser.displayName.slice(0, 1)}
@@ -700,7 +734,7 @@ function ProfileMenu({
                 {currentUser.displayName}
               </p>
               <p style={{ fontSize: 12, color: "#999" }}>
-                {currentUser.username}@mihuoxingwei.com
+                用户名：{currentUser.username}
               </p>
             </div>
           </div>
@@ -708,7 +742,10 @@ function ProfileMenu({
 
         <div className="h-px bg-[#F0F0F0]" />
 
-        <button className="flex w-full items-center justify-between px-4 py-3.5 transition-colors active:bg-[#F5F5F5]">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-4 py-3.5 transition-colors active:bg-[#F5F5F5]"
+        >
           <div className="flex items-center gap-3">
             <User size={16} className="text-[#888]" />
             <span style={{ fontSize: 14, color: "#222" }}>账户管理</span>
@@ -739,14 +776,28 @@ function ProfileMenu({
 
         <button
           type="button"
-          onClick={() => setAboutOpen(true)}
+          onClick={onOpenAbout}
           className="flex w-full items-center justify-between px-4 py-3.5 transition-colors active:bg-[#F5F5F5]"
         >
           <div className="flex items-center gap-3">
             <Info size={16} className="text-[#888]" />
-            <span style={{ fontSize: 14, color: "#222" }}>关于迷惑行为</span>
+            <span style={{ fontSize: 14, color: "#222" }}>关于编辑台</span>
           </div>
           <ChevronRight size={14} className="text-[#CCC]" />
+        </button>
+
+        <div className="mx-4 h-px bg-[#F0F0F0]" />
+
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-4 py-3.5 transition-colors active:bg-[#F5F5F5]"
+        >
+          <div className="flex items-center gap-3">
+            <MoreHorizontal size={16} className="text-[#888]" />
+            <span style={{ fontSize: 14, color: "#222" }}>
+              点击右上角 ···，存为浮窗
+            </span>
+          </div>
         </button>
 
         <div className="mx-4 h-px bg-[#F0F0F0]" />
@@ -769,36 +820,69 @@ function ProfileMenu({
       >
         <X size={18} className="text-[#555]" />
       </button>
+    </div>
+  );
+}
 
-      {aboutOpen ? (
-        <div className="absolute inset-0 z-20 flex items-center justify-center px-8">
+function AboutDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="absolute inset-0 z-[60] flex items-center justify-center px-5">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/35"
+        aria-label="关闭关于编辑台"
+        onClick={onClose}
+      />
+      <section className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium text-[#FD80C2]">CHANGELOG</p>
+            <h2 className="mt-1 text-lg font-semibold text-[#111]">更新历史</h2>
+          </div>
           <button
             type="button"
-            className="absolute inset-0 bg-black/20"
-            aria-label="关闭关于迷惑行为"
-            onClick={() => setAboutOpen(false)}
-          />
-          <section className="relative w-full max-w-80 rounded-2xl bg-white p-5 shadow-2xl">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-[#111]">关于迷惑行为</h2>
-              <button
-                type="button"
-                onClick={() => setAboutOpen(false)}
-                className="grid size-7 place-items-center rounded-full bg-[#F5F5F5]"
-                aria-label="关闭关于迷惑行为"
-              >
-                <X size={14} className="text-[#666]" />
-              </button>
-            </div>
-            <p className="text-sm leading-6 text-[#555]">
-              全元光滑迷惑行为编辑台，用于整理、筛选和排版投稿内容。
-            </p>
-            <p className="mt-4 text-xs font-medium text-[#999]">
-              Credit by Vicky 2026
-            </p>
-          </section>
+            onClick={onClose}
+            className="grid size-7 place-items-center rounded-full bg-[#F5F5F5]"
+            aria-label="关闭关于编辑台"
+          >
+            <X size={14} className="text-[#666]" />
+          </button>
         </div>
-      ) : null}
+        <div className="h-px bg-[#F0F0F0]" />
+        <div className="py-4">
+          <p className="text-base font-semibold leading-6 text-[#111]">
+            全元光滑 · 迷惑行为编辑台
+          </p>
+          <p className="mt-2 text-sm leading-6 text-[#555]">
+            用于同步投稿、整理刊数、筛选采用内容并预览公众号文章。
+          </p>
+        </div>
+        <div className="h-px bg-[#F0F0F0]" />
+        <div className="space-y-4 py-4">
+          <div className="rounded-xl bg-[#FFF8FC] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[#111]">版本 1.0</p>
+              <p className="text-xs font-medium text-[#999]">2026-05-13</p>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[#555]">
+              正式发布：完善刊数命名与排序、批量归属操作、注册口令、账号菜单和发布前检查。
+            </p>
+          </div>
+          <div className="rounded-xl bg-[#FAFAFA] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[#111]">版本 0.9</p>
+              <p className="text-xs font-medium text-[#999]">2026-05-13</p>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[#555]">
+              发布候选：完成编辑台核心体验、飞书同步、投稿筛选、采用预览和图片处理流程。
+            </p>
+          </div>
+        </div>
+        <div className="h-px bg-[#F0F0F0]" />
+        <p className="mt-4 text-xs font-medium text-[#999]">
+          Credit by Vicky 2026
+        </p>
+      </section>
     </div>
   );
 }
@@ -807,6 +891,7 @@ function IssuePanel({
   issues,
   currentIssueId,
   renameValue,
+  error,
   onRenameValueChange,
   onClose,
   onRename,
@@ -816,6 +901,7 @@ function IssuePanel({
   issues: { id: string; title: string }[];
   currentIssueId: string | null;
   renameValue: string;
+  error: string | null;
   onRenameValueChange: (value: string) => void;
   onClose: () => void;
   onRename: () => void;
@@ -829,7 +915,7 @@ function IssuePanel({
       <button
         type="button"
         className="absolute inset-0 bg-black/25"
-        aria-label="关闭期数面板"
+        aria-label="关闭刊数面板"
         onClick={onClose}
       />
       <section className="relative z-10 flex max-h-[80vh] flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl">
@@ -838,13 +924,13 @@ function IssuePanel({
         </div>
         <header className="flex flex-shrink-0 items-center justify-between px-4 py-3">
           <span style={{ fontWeight: 600, fontSize: 16, color: "#111" }}>
-            期数管理
+            刊数管理
           </span>
           <button
             type="button"
             onClick={onClose}
             className="flex size-7 items-center justify-center rounded-full hover:bg-[#F5F5F5]"
-            aria-label="关闭期数面板"
+            aria-label="关闭刊数面板"
           >
             <X size={16} className="text-[#888]" />
           </button>
@@ -863,37 +949,39 @@ function IssuePanel({
               marginBottom: 6,
             }}
           >
-            当前期数
+            当前刊数
           </p>
           {currentIssueId && renamingId === currentIssueId ? (
-            <div className="flex gap-2">
-              <input
-                value={renameValue}
-                onChange={(event) => onRenameValueChange(event.target.value)}
-                className="flex-1 rounded-lg border border-[#FECDE8] bg-[#FFF8FC] px-3 py-2 text-sm outline-none focus:border-[#FD80C2]"
-                style={{ fontSize: 14, color: "#111" }}
-                autoFocus
-                onKeyDown={(event) => event.key === "Enter" && onRename()}
-              />
-              <button
-                type="button"
-                onClick={() => setRenamingId(null)}
-                className="rounded-lg bg-[#F5F5F5] px-3 py-2 text-sm text-[#999]"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onRename();
-                  setRenamingId(null);
-                }}
-                className="rounded-lg px-3 py-2 text-sm text-white"
-                style={{ background: "#FD80C2", fontWeight: 500 }}
-              >
-                保存
-              </button>
-            </div>
+            <>
+              <div className="flex gap-2">
+                <input
+                  value={renameValue}
+                  onChange={(event) => onRenameValueChange(event.target.value)}
+                  className="flex-1 rounded-lg border border-[#FECDE8] bg-[#FFF8FC] px-3 py-2 text-sm outline-none focus:border-[#FD80C2]"
+                  style={{ fontSize: 14, color: "#111" }}
+                  autoFocus
+                  onKeyDown={(event) => event.key === "Enter" && onRename()}
+                />
+                <button
+                  type="button"
+                  onClick={() => setRenamingId(null)}
+                  className="rounded-lg bg-[#F5F5F5] px-3 py-2 text-sm text-[#999]"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={onRename}
+                  className="rounded-lg px-3 py-2 text-sm text-white"
+                  style={{ background: "#FD80C2", fontWeight: 500 }}
+                >
+                  保存
+                </button>
+              </div>
+              {error ? (
+                <p className="mt-2 text-xs font-medium text-red-500">{error}</p>
+              ) : null}
+            </>
           ) : (
             <div className="flex items-center gap-2">
               <span style={{ fontSize: 15, color: "#111", fontWeight: 500 }}>
@@ -932,7 +1020,7 @@ function IssuePanel({
                 marginBottom: 4,
               }}
             >
-              所有期数
+              所有刊数
             </p>
           </div>
           {issues.map((issue) => (
@@ -976,7 +1064,7 @@ function IssuePanel({
         >
           <Plus size={16} style={{ color: "#FD80C2" }} />
           <span style={{ fontSize: 14, color: "#FD80C2", fontWeight: 500 }}>
-            新建期数
+            新建刊数
           </span>
         </button>
       </section>

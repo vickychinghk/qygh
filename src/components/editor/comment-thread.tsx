@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Heart, PencilLine, Send, Trash2, X } from "lucide-react";
+import { Check, Heart, PencilLine, Send, Trash2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { hasUserReacted } from "@/lib/selection-rules";

@@ -1,12 +1,12 @@
 {
   "name": "mihuo-editor",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest run",
     "db:push": "node scripts/init-sqlite.mjs && prisma generate",
     "db:seed": "tsx prisma/seed.ts",

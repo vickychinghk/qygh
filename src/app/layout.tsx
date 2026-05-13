@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "全元光滑迷惑行为",
+  title: "全元光滑 · 迷惑行为",
   description: "公众号编辑团队的投稿协作后台",
 };
 

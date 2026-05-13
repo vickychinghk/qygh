@@ -20,7 +20,7 @@ export default async function PreviewPage({
   const richContent = issue ? buildIssueHtml(issue) : "";
   const previewTitle = issue
     ? formatPreviewTitle(issue.title)
-    : "清北迷惑行为大赏 • 2024年10月刊";
+    : "清北迷惑行为大赏·2024年10月刊";
 
   return (
     <main
@@ -66,10 +66,10 @@ export default async function PreviewPage({
           <div className="flex flex-col items-center justify-center gap-3 py-24">
             <AlertCircle size={32} style={{ color: "#FD80C2", opacity: 0.5 }} />
             <p style={{ fontSize: 15, color: "#AAA", fontWeight: 500 }}>
-              当前期数没有已采用的投稿
+              当前刊数没有已采用的投稿
             </p>
             <p style={{ fontSize: 12, color: "#CCC" }}>
-              请先在期数中勾选采用投稿
+              请先在刊数中勾选采用投稿
             </p>
           </div>
         ) : (
@@ -198,5 +198,5 @@ function formatPreviewTitle(title: string) {
     ? withoutIssue
     : `${withoutIssue}刊`;
 
-  return `清北迷惑行为大赏 • ${withSuffix}`;
+  return `清北迷惑行为大赏·${withSuffix}`;
 }

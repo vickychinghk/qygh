@@ -772,7 +772,7 @@ function IssuePopover({
                 className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-[#dc2626] active:bg-[#fff3f3]"
               >
                 <X className="size-3" />
-                移除期数归属
+                移除刊数归属
               </button>
             </div>
           ) : null}
@@ -892,8 +892,13 @@ function IssueOrderHeader({
         <span className="text-[11px] font-semibold text-primary">No.</span>
         <input
           value={value}
-          inputMode="decimal"
-          onChange={(event) => setValue(event.target.value)}
+          inputMode="numeric"
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            if (/^-?\d*$/.test(nextValue)) {
+              setValue(nextValue);
+            }
+          }}
           onFocus={() => setFocused(true)}
           onBlur={commit}
           onKeyDown={(event) => {

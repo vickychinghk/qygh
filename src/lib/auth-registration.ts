@@ -3,6 +3,7 @@ export type RegistrationInput = {
   displayName: string;
   password: string;
   confirmPassword: string;
+  inviteCode: string;
 };
 
 export type RegistrationValidationResult =
@@ -25,6 +26,7 @@ export function validateRegistrationInput(
   const displayName = input.displayName.trim();
   const password = input.password;
   const confirmPassword = input.confirmPassword;
+  const inviteCode = input.inviteCode.trim();
 
   if (!usernamePattern.test(username)) {
     return {
@@ -49,5 +51,31 @@ export function validateRegistrationInput(
     return { ok: false, message: "两次输入的密码不一致" };
   }
 
+  const allowedInviteCodes = getAllowedInviteCodes();
+  if (allowedInviteCodes.length === 0) {
+    return { ok: false, message: "注册口令尚未配置" };
+  }
+
+  if (!allowedInviteCodes.includes(inviteCode)) {
+    return { ok: false, message: "注册口令不正确" };
+  }
+
   return { ok: true, data: { username, displayName, password } };
+}
+
+function getAllowedInviteCodes() {
+  const configured = process.env.REGISTRATION_INVITE_CODE;
+
+  if (configured) {
+    return configured
+      .split(",")
+      .map((code) => code.trim())
+      .filter(Boolean);
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return [];
+  }
+
+  return ["我爱vv"];
 }
