@@ -1,15 +1,15 @@
-import { redirect } from "next/navigation";
 import { EditorApp } from "@/components/editor/editor-app";
 import { getDashboardSnapshot } from "@/lib/data";
 import { requireCurrentUser } from "@/lib/auth";
 
-export default async function AppPage() {
+export default async function AppPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ issue?: string }>;
+}) {
   const user = await requireCurrentUser();
-  const snapshot = await getDashboardSnapshot();
-
-  if (!snapshot) {
-    redirect("/login");
-  }
+  const params = await searchParams;
+  const snapshot = await getDashboardSnapshot(params?.issue);
 
   return <EditorApp currentUser={user} snapshot={snapshot} />;
 }

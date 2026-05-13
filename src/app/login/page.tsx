@@ -21,7 +21,7 @@ export default async function LoginPage({
     <main className="flex min-h-dvh items-center justify-center bg-secondary px-5 py-8">
       <section className="w-full max-w-sm rounded-lg border bg-background p-5 shadow-sm">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold tracking-normal">迷惑行为编辑台</h1>
+          <h1 className="text-xl font-semibold tracking-normal">全元光滑迷惑行为</h1>
           <p className="text-sm text-muted-foreground">
             编辑账号登录，本地测试密码为 123456。
           </p>
