@@ -12,11 +12,13 @@ import {
   EyeOff,
   Heart,
   ImageOff,
+  AlertCircle,
   Plus,
   Video,
   X,
 } from "lucide-react";
 import { CommentThread } from "@/components/editor/comment-thread";
+import { getAssetIssueDetail } from "@/lib/asset-details";
 import { cn } from "@/lib/utils";
 import {
   getSubmissionIssueLabel,
@@ -213,6 +215,7 @@ function ImageGrid({
             <ImageTile
               key={image.id}
               image={image}
+              serialNumber={submission.serialNumber}
               enabled={enabled}
               alt={`${submission.school} 投稿图片`}
               onOpen={() => setLightboxId(image.id)}
@@ -254,6 +257,7 @@ function ImageGrid({
       {lightboxImage ? (
         <ImageLightbox
           image={lightboxImage}
+          serialNumber={submission.serialNumber}
           index={lightboxIndex}
           total={images.length}
           onClose={() => setLightboxId(null)}
@@ -274,38 +278,52 @@ function ImageGrid({
 
 function ImageTile({
   image,
+  serialNumber,
   enabled,
   alt,
   onOpen,
 }: {
   image: SubmissionImage;
+  serialNumber?: string | null;
   enabled: boolean;
   alt: string;
   onOpen: () => void;
 }) {
   const [errored, setErrored] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const unsupported = unsupportedAssetLabel(image);
+  const hasDetails = Boolean(unsupported || errored);
 
   return (
-    <button
-      type="button"
-      className="relative aspect-square overflow-hidden bg-white"
-      onClick={onOpen}
-    >
-      {unsupported ? (
-        <AssetPlaceholder kind={image.assetKind} label={unsupported} />
-      ) : errored ? (
-        <AssetPlaceholder kind="UNSUPPORTED" label="图片出错" />
-      ) : (
-        <Image
-          src={image.localPath}
-          alt={alt}
-          fill
-          sizes="(max-width: 448px) 33vw, 146px"
-          className={cn("object-cover", !enabled && "opacity-40 grayscale")}
-          onError={() => setErrored(true)}
+    <div className="relative aspect-square overflow-hidden bg-white">
+      <button
+        type="button"
+        className="absolute inset-0"
+        onClick={onOpen}
+        aria-label={alt}
+      >
+        {unsupported ? (
+          <AssetPlaceholder kind={image.assetKind} label={unsupported} />
+        ) : errored ? (
+          <AssetPlaceholder kind="UNSUPPORTED" label="图片出错" />
+        ) : (
+          <Image
+            src={image.localPath}
+            alt={alt}
+            fill
+            sizes="(max-width: 448px) 33vw, 146px"
+            className={cn("object-cover", !enabled && "opacity-40 grayscale")}
+            onError={() => setErrored(true)}
+          />
+        )}
+      </button>
+      {hasDetails ? (
+        <AssetDetailButton
+          onClick={() => {
+            setDetailsOpen(true);
+          }}
         />
-      )}
+      ) : null}
       <span
         className={cn(
           "absolute right-1 top-1 grid size-5 place-items-center rounded-full",
@@ -314,7 +332,14 @@ function ImageTile({
       >
         {enabled ? <Check className="size-3" /> : <EyeOff className="size-3" />}
       </span>
-    </button>
+      {detailsOpen ? (
+        <AssetIssueDialog
+          image={image}
+          serialNumber={serialNumber}
+          onClose={() => setDetailsOpen(false)}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -355,6 +380,7 @@ function unsupportedAssetLabel(image: SubmissionImage) {
 
 function ImageLightbox({
   image,
+  serialNumber,
   index,
   total,
   onClose,
@@ -363,6 +389,7 @@ function ImageLightbox({
   onToggleImageEnabled,
 }: {
   image: SubmissionImage;
+  serialNumber?: string | null;
   index: number;
   total: number;
   onClose: () => void;
@@ -372,6 +399,7 @@ function ImageLightbox({
 }) {
   const enabled = image.enabled !== false;
   const unsupported = unsupportedAssetLabel(image);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
     <div className="fixed inset-0 z-[60] mx-auto flex max-w-md flex-col bg-black/95">
@@ -387,17 +415,29 @@ function ImageLightbox({
         <span className="text-sm text-white/60">
           {index + 1} / {total}
         </span>
-        <button
-          type="button"
-          onClick={() => void onToggleImageEnabled(image.id, !enabled)}
-          className={cn(
-            "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold",
-            enabled ? "bg-primary text-white" : "bg-white/15 text-white/60",
-          )}
-        >
-          {enabled ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
-          {enabled ? "已启用" : "已停用"}
-        </button>
+        <div className="flex items-center gap-2">
+          {unsupported ? (
+            <button
+              type="button"
+              onClick={() => setDetailsOpen(true)}
+              className="grid size-9 place-items-center rounded-full bg-white/15 text-white"
+              aria-label="查看附件详情"
+            >
+              <AlertCircle className="size-4" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void onToggleImageEnabled(image.id, !enabled)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold",
+              enabled ? "bg-primary text-white" : "bg-white/15 text-white/60",
+            )}
+          >
+            {enabled ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+            {enabled ? "已启用" : "已停用"}
+          </button>
+        </div>
       </div>
 
       <div className="relative flex-1 overflow-y-auto">
@@ -446,6 +486,81 @@ function ImageLightbox({
           {enabled ? "导出时将包含此图片" : "导出时不包含此图片"}
         </span>
       </div>
+      {detailsOpen ? (
+        <AssetIssueDialog
+          image={image}
+          serialNumber={serialNumber}
+          onClose={() => setDetailsOpen(false)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AssetDetailButton({
+  onClick,
+}: {
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="absolute left-1 top-1 z-10 grid size-6 place-items-center rounded-full bg-black/55 text-white shadow-sm"
+      aria-label="查看附件详情"
+    >
+      <AlertCircle className="size-3.5" />
+    </button>
+  );
+}
+
+function AssetIssueDialog({
+  image,
+  serialNumber,
+  onClose,
+}: {
+  image: SubmissionImage;
+  serialNumber?: string | null;
+  onClose: () => void;
+}) {
+  const detail = getAssetIssueDetail({
+    serialNumber,
+    assetKind: image.assetKind,
+    processingStatus: image.processingStatus,
+    processingError: image.processingError,
+  });
+
+  return (
+    <div className="fixed inset-0 z-[80] mx-auto flex max-w-md items-center justify-center px-6">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/45"
+        aria-label="关闭附件详情"
+        onClick={onClose}
+      />
+      <section className="relative z-10 w-full rounded-2xl bg-white p-5 text-left shadow-2xl">
+        <div className="mb-4 flex items-start gap-3">
+          <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[#fff1f2] text-[#e11d48]">
+            <AlertCircle className="size-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-[#111]">{detail.title}</h2>
+            <p className="mt-1 text-sm leading-5 text-[#666]">{detail.message}</p>
+          </div>
+        </div>
+        <div className="space-y-2 rounded-xl bg-[#f7f7f8] p-3 text-xs leading-5 text-[#555]">
+          <p>{detail.serialLabel}</p>
+          <p className="break-words">{detail.errorLabel}</p>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-[#555]">{detail.actionHint}</p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-5 w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white"
+        >
+          知道了
+        </button>
+      </section>
     </div>
   );
 }
