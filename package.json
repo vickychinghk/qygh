@@ -10,6 +10,7 @@
     "test": "vitest run",
     "db:push": "node scripts/init-sqlite.mjs && prisma generate",
     "db:seed": "tsx prisma/seed.ts",
+    "db:clear-user-data": "tsx scripts/clear-user-data.ts",
     "sync:feishu": "tsx scripts/sync-feishu.ts",
     "images:reprocess": "tsx scripts/reprocess-images.ts"
   },

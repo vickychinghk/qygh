@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +24,7 @@ export default async function LoginPage({
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold tracking-normal">全元光滑迷惑行为</h1>
           <p className="text-sm text-muted-foreground">
-            编辑账号登录，本地测试密码为 123456。
+            登录编辑台，整理投稿、吐槽语和推送期数。
           </p>
         </div>
 
@@ -34,7 +35,7 @@ export default async function LoginPage({
               id="username"
               name="username"
               autoComplete="username"
-              placeholder="vicky"
+              placeholder="editor"
               required
             />
           </div>
@@ -45,7 +46,7 @@ export default async function LoginPage({
               name="password"
               type="password"
               autoComplete="current-password"
-              placeholder="123456"
+              placeholder="输入密码"
               required
             />
           </div>
@@ -56,6 +57,13 @@ export default async function LoginPage({
             登录
           </Button>
         </form>
+
+        <p className="mt-5 text-center text-sm text-muted-foreground">
+          还没有账号？
+          <Link href="/register" className="font-medium text-primary">
+            去注册
+          </Link>
+        </p>
       </section>
     </main>
   );

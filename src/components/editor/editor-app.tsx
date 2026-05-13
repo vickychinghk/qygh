@@ -7,12 +7,14 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
+  ImageOff,
   Info,
   Inbox,
   LogOut,
   Pencil,
   Plus,
   RefreshCw,
+  Search,
   SlidersHorizontal,
   User,
   X,
@@ -32,18 +34,20 @@ import {
   batchAddFilteredSubmissionsToIssueAction,
   createIssueAction,
   deleteCommentAction,
+  inspectDamagedFeishuImagesAction,
   logoutAction,
   moveIssueItemAction,
   moveSubmissionToIssueAction,
   removeSubmissionFromIssueAction,
+  repairDamagedFeishuImagesAction,
   renameIssueAction,
-  reorderIssueItemToPositionAction,
   selectFinalCommentAction,
   setSubmissionImageEnabledAction,
   setSubmissionIssueConfirmedAction,
   toggleCommentStarAction,
   toggleSubmissionStarAction,
   updateCommentAction,
+  updateIssueItemSortOrderAction,
   updateSubmissionSchoolAction,
 } from "@/app/app/actions";
 import { cn } from "@/lib/utils";
@@ -66,6 +70,28 @@ type SyncReport = {
     skipped: number;
   };
   errors: string[];
+};
+
+type FeishuImageHealthSummary = {
+  checked: number;
+  damaged: number;
+  failed: number;
+  missingFiles: number;
+  unsupported: number;
+  repairable: number;
+};
+
+type ImageRepairReport = {
+  before: FeishuImageHealthSummary;
+  after: FeishuImageHealthSummary;
+  repaired: number;
+  images: {
+    attempted: number;
+    downloaded: number;
+    existing: number;
+    failed: number;
+    skipped: number;
+  };
 };
 
 type SyncProgress = {
@@ -92,6 +118,14 @@ export function EditorApp({
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
+  const [imageHealth, setImageHealth] = useState<FeishuImageHealthSummary | null>(
+    null,
+  );
+  const [imageRepairReport, setImageRepairReport] =
+    useState<ImageRepairReport | null>(null);
+  const [imageRepairError, setImageRepairError] = useState<string | null>(null);
+  const [checkingImages, setCheckingImages] = useState(false);
+  const [repairingImages, setRepairingImages] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress>({
     scanned: 0,
     created: 0,
@@ -155,9 +189,7 @@ export function EditorApp({
     >
       <TopBar
         currentUser={currentUser}
-        syncing={syncing}
         onAvatarClick={() => setOverlay("profile")}
-        onSync={() => setOverlay("sync")}
       />
 
       <div className="flex flex-shrink-0 border-b border-[#F0F0F0] bg-white">
@@ -255,7 +287,7 @@ export function EditorApp({
                     run(() => moveIssueItemAction(issueItemId, direction))
                   }
                   onMoveToPosition={(issueItemId, position) =>
-                    run(() => reorderIssueItemToPositionAction(issueItemId, position))
+                    run(() => updateIssueItemSortOrderAction(issueItemId, position))
                   }
                   onAddToIssue={(issueId, submissionId) =>
                     run(() => addSubmissionToIssueAction(issueId, submissionId))
@@ -320,7 +352,7 @@ export function EditorApp({
                   run(() => moveIssueItemAction(issueItemId, direction))
                 }
                 onMoveToPosition={(issueItemId, position) =>
-                  run(() => reorderIssueItemToPositionAction(issueItemId, position))
+                  run(() => updateIssueItemSortOrderAction(issueItemId, position))
                 }
                 onAddToIssue={(issueId, submissionId) =>
                   run(() => addSubmissionToIssueAction(issueId, submissionId))
@@ -366,7 +398,11 @@ export function EditorApp({
       />
 
       {overlay === "profile" ? (
-        <ProfileMenu currentUser={currentUser} onClose={() => setOverlay("none")} />
+        <ProfileMenu
+          currentUser={currentUser}
+          onClose={() => setOverlay("none")}
+          onOpenSync={() => setOverlay("sync")}
+        />
       ) : null}
       {overlay === "issue" ? (
         <IssuePanel
@@ -409,14 +445,21 @@ export function EditorApp({
         />
       ) : null}
       {overlay === "sync" ? (
-        <SyncConfirm
+        <FeishuMaintenanceDialog
           lastSyncedAt={snapshot.lastSync?.finishedAt ?? null}
           syncing={syncing}
           error={syncError}
           progress={syncProgress}
           report={syncReport}
+          imageHealth={imageHealth}
+          imageRepairReport={imageRepairReport}
+          imageRepairError={imageRepairError}
+          checkingImages={checkingImages}
+          repairingImages={repairingImages}
           onClose={() => setOverlay("none")}
-          onConfirm={runStreamingSync}
+          onSync={runStreamingSync}
+          onCheckImages={runImageHealthCheck}
+          onRepairImages={runImageRepair}
         />
       ) : null}
     </main>
@@ -472,6 +515,34 @@ export function EditorApp({
     }
   }
 
+  async function runImageHealthCheck() {
+    setImageRepairError(null);
+    setImageRepairReport(null);
+    setCheckingImages(true);
+    try {
+      setImageHealth(await inspectDamagedFeishuImagesAction());
+    } catch (error) {
+      setImageRepairError(error instanceof Error ? error.message : "检测失败");
+    } finally {
+      setCheckingImages(false);
+    }
+  }
+
+  async function runImageRepair() {
+    setImageRepairError(null);
+    setRepairingImages(true);
+    try {
+      const report = await repairDamagedFeishuImagesAction();
+      setImageRepairReport(report);
+      setImageHealth(report.after);
+      router.refresh();
+    } catch (error) {
+      setImageRepairError(error instanceof Error ? error.message : "修复失败");
+    } finally {
+      setRepairingImages(false);
+    }
+  }
+
   function handleSyncEvent(event: {
     type: string;
     fetched?: number;
@@ -511,14 +582,10 @@ function Feed({ children }: { children: React.ReactNode }) {
 
 function TopBar({
   currentUser,
-  syncing,
   onAvatarClick,
-  onSync,
 }: {
   currentUser: { displayName: string };
-  syncing?: boolean;
   onAvatarClick: () => void;
-  onSync: () => void;
 }) {
   const initials = currentUser.displayName.slice(0, 1);
 
@@ -535,17 +602,6 @@ function TopBar({
         全元光滑迷惑行为
       </span>
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onSync}
-          className="flex size-8 items-center justify-center rounded-full transition-colors hover:bg-[#F5F5F5] active:bg-[#EBEBEB]"
-          aria-label="从飞书同步"
-        >
-          <RefreshCw
-            size={17}
-            className={cn("text-[#888]", syncing && "animate-spin")}
-          />
-        </button>
         <button
           type="button"
           onClick={onAvatarClick}
@@ -618,9 +674,11 @@ function EmptyState({
 function ProfileMenu({
   currentUser,
   onClose,
+  onOpenSync,
 }: {
   currentUser: { displayName: string; username: string };
   onClose: () => void;
+  onOpenSync: () => void;
 }) {
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -661,6 +719,20 @@ function ProfileMenu({
             </span>
             <ChevronRight size={14} className="text-[#CCC]" />
           </div>
+        </button>
+
+        <div className="mx-4 h-px bg-[#F0F0F0]" />
+
+        <button
+          type="button"
+          onClick={onOpenSync}
+          className="flex w-full items-center justify-between px-4 py-3.5 transition-colors active:bg-[#F5F5F5]"
+        >
+          <div className="flex items-center gap-3">
+            <RefreshCw size={16} className="text-[#888]" />
+            <span style={{ fontSize: 14, color: "#222" }}>拉取飞书</span>
+          </div>
+          <ChevronRight size={14} className="text-[#CCC]" />
         </button>
 
         <div className="mx-4 h-px bg-[#F0F0F0]" />
@@ -912,25 +984,40 @@ function IssuePanel({
   );
 }
 
-function SyncConfirm({
+function FeishuMaintenanceDialog({
   lastSyncedAt,
   syncing,
   error,
   progress,
   report,
+  imageHealth,
+  imageRepairReport,
+  imageRepairError,
+  checkingImages,
+  repairingImages,
   onClose,
-  onConfirm,
+  onSync,
+  onCheckImages,
+  onRepairImages,
 }: {
   lastSyncedAt: Date | string | null;
   syncing: boolean;
   error: string | null;
   progress: SyncProgress;
   report: SyncReport | null;
+  imageHealth: FeishuImageHealthSummary | null;
+  imageRepairReport: ImageRepairReport | null;
+  imageRepairError: string | null;
+  checkingImages: boolean;
+  repairingImages: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onSync: () => void;
+  onCheckImages: () => void;
+  onRepairImages: () => void;
 }) {
   const lastSyncText = lastSyncedAt
     ? new Intl.DateTimeFormat("zh-CN", {
+        year: "numeric",
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
@@ -938,123 +1025,202 @@ function SyncConfirm({
         hour12: false,
       }).format(new Date(lastSyncedAt))
     : "从未同步";
+  const busy = syncing || checkingImages || repairingImages;
 
   return (
-    <div className="fixed inset-0 z-50 mx-auto flex max-w-md items-center justify-center px-8">
+    <div className="fixed inset-0 z-50 mx-auto flex max-w-md items-center justify-center px-6">
       <button
         type="button"
         className="absolute inset-0 bg-black/35"
-        aria-label="取消同步"
+        aria-label="关闭拉取飞书"
         onClick={onClose}
       />
-      <section className="relative z-10 w-full max-w-80 rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="mb-4 flex items-center gap-3">
-          <div
-            className="flex size-10 flex-shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "#FFF0F8" }}
-          >
+      <section className="relative z-10 max-h-[86vh] w-full max-w-96 overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="mb-4 flex items-start gap-3">
+          <div className="flex size-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#FFF0F8]">
             <RefreshCw size={18} style={{ color: "#FD80C2" }} />
           </div>
           <div>
             <p style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>
-              从飞书同步
+              拉取飞书
             </p>
-            <p style={{ fontSize: 11, color: "#AAA" }}>
+            <p style={{ fontSize: 11, color: "#999", marginTop: 2 }}>
               上次更新：{lastSyncText}
             </p>
+            <p className="mt-1 text-[11px] leading-4 text-[#C2410C]">
+              非必要不要更新，以免浪费飞书 API 额度。
+            </p>
           </div>
         </div>
 
-        <p style={{ fontSize: 13, color: "#666", lineHeight: 1.6, marginBottom: 20 }}>
-          首次会拉取全部记录，之后只按飞书投稿日期增量拉取新内容。
-        </p>
-        {syncing ? (
-          <div className="mb-4">
-            <div className="mb-2 h-2 overflow-hidden rounded-full bg-[#F1F1F3]">
-              <div
-                className="h-full rounded-full bg-[#FD80C2] transition-all"
-                style={{
-                  width: `${Math.min(
-                    96,
-                    Math.max(12, progress.scanned === 0 ? 12 : 42 + progress.created),
-                  )}%`,
-                }}
+        <div className="space-y-3">
+          <section className="rounded-xl border border-[#F0F0F0] bg-[#FAFAFB] px-3 py-3">
+            <div className="mb-2 flex items-center gap-2">
+              <RefreshCw
+                size={15}
+                className={cn("text-[#FD80C2]", syncing && "animate-spin")}
               />
+              <p className="text-sm font-semibold text-[#111]">更新内容</p>
             </div>
-            <p className="text-xs text-[#777]">
-              已扫描 {progress.scanned} 条，新增 {progress.created} 条，失败{" "}
-              {progress.failed} 条
+            <p className="mb-3 text-xs leading-5 text-[#666]">
+              按飞书投稿日期增量拉取新投稿，不覆盖已导入后的编辑内容。
             </p>
-          </div>
-        ) : null}
-        {error ? (
-          <p
-            className="mb-3 rounded-lg px-3 py-2"
-            style={{ background: "#FFF3F3", color: "#DC2626", fontSize: 12 }}
-          >
-            {error}
-          </p>
-        ) : null}
-        {report ? (
-          <div
-            className="mb-4 rounded-xl px-3 py-3"
-            style={{ background: report.complete ? "#F0FDF4" : "#FFF7ED" }}
-          >
-            <p
-              className="mb-2 text-xs font-semibold"
-              style={{ color: report.complete ? "#15803D" : "#C2410C" }}
-            >
-              {report.complete ? "同步完整" : "同步未完整"}
-            </p>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-[#555]">
-              <span>扫描 {report.scanned}</span>
-              <span>新增 {report.created}</span>
-              <span>跳过旧内容 {report.skippedExisting}</span>
-              <span>记录失败 {report.failed}</span>
-              <span>图片完成 {report.images.downloaded + report.images.existing}</span>
-              <span>图片异常 {report.images.failed + report.images.skipped}</span>
-            </div>
-            {report.errors.length ? (
-              <div className="mt-3 max-h-28 overflow-y-auto rounded-lg bg-white/70 px-2 py-2">
-                {report.errors.slice(0, 8).map((item) => (
-                  <p key={item} className="mb-1 text-[11px] leading-4 text-[#9A3412]">
-                    {item}
-                  </p>
-                ))}
-                {report.errors.length > 8 ? (
-                  <p className="text-[11px] text-[#9A3412]">
-                    还有 {report.errors.length - 8} 条异常，已记录在同步日志。
-                  </p>
-                ) : null}
+            {syncing ? (
+              <div className="mb-3">
+                <div className="mb-2 h-2 overflow-hidden rounded-full bg-[#F1F1F3]">
+                  <div
+                    className="h-full rounded-full bg-[#FD80C2] transition-all"
+                    style={{
+                      width: `${Math.min(
+                        96,
+                        Math.max(
+                          12,
+                          progress.scanned === 0 ? 12 : 42 + progress.created,
+                        ),
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-[#777]">
+                  已扫描 {progress.scanned} 条，新增 {progress.created} 条，失败{" "}
+                  {progress.failed} 条
+                </p>
               </div>
             ) : null}
-          </div>
-        ) : null}
+            {error ? (
+              <p className="mb-3 rounded-lg bg-[#FFF3F3] px-3 py-2 text-xs text-[#DC2626]">
+                {error}
+              </p>
+            ) : null}
+            {report ? (
+              <SyncReportSummary report={report} />
+            ) : null}
+            <button
+              type="button"
+              className="w-full rounded-xl py-2.5 text-white transition-opacity active:opacity-90 disabled:opacity-50"
+              style={{
+                background: "linear-gradient(135deg, #FD80C2 0%, #F06292 100%)",
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+              disabled={busy}
+              onClick={onSync}
+            >
+              {syncing ? "拉取中..." : report ? "再次拉取新增内容" : "拉取新增内容"}
+            </button>
+          </section>
 
-        <div className="flex gap-3">
-          <button
-            type="button"
-            className="flex-1 rounded-xl bg-[#F5F5F5] py-2.5 transition-colors active:bg-[#EBEBEB]"
-            style={{ fontSize: 14, color: "#666", fontWeight: 500 }}
-            onClick={onClose}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            className="flex-1 rounded-xl py-2.5 text-white transition-opacity active:opacity-90 disabled:opacity-50"
-            style={{
-              background: "linear-gradient(135deg, #FD80C2 0%, #F06292 100%)",
-              fontSize: 14,
-              fontWeight: 600,
-            }}
-            disabled={syncing}
-            onClick={onConfirm}
-          >
-            {syncing ? "同步中..." : report ? "再次刷新" : "开始同步"}
-          </button>
+          <section className="rounded-xl border border-[#F0F0F0] bg-[#FAFAFB] px-3 py-3">
+            <div className="mb-2 flex items-center gap-2">
+              <ImageOff size={15} className="text-[#FD80C2]" />
+              <p className="text-sm font-semibold text-[#111]">
+                检测损坏图片，重新修复
+              </p>
+            </div>
+            <p className="mb-3 text-xs leading-5 text-[#666]">
+              只检查飞书来源图片，不处理编辑手动上传的图片。
+            </p>
+
+            {imageHealth ? <ImageHealthSummary summary={imageHealth} /> : null}
+
+            {imageRepairReport ? (
+              <p className="mb-3 rounded-lg bg-[#F0FDF4] px-3 py-2 text-xs leading-5 text-[#15803D]">
+                已修复 {imageRepairReport.repaired} 张，剩余损坏{" "}
+                {imageRepairReport.after.damaged} 张。
+              </p>
+            ) : null}
+
+            {imageRepairError ? (
+              <p className="mb-3 rounded-lg bg-[#FFF3F3] px-3 py-2 text-xs leading-5 text-[#DC2626]">
+                {imageRepairError}
+              </p>
+            ) : null}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white py-2.5 text-sm font-medium text-[#555] transition-colors active:bg-[#F0F0F0] disabled:opacity-50"
+                disabled={busy}
+                onClick={onCheckImages}
+              >
+                <Search size={14} />
+                {checkingImages ? "检测中..." : "检测损坏图片"}
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white transition-opacity active:opacity-90 disabled:opacity-50"
+                style={{ background: "#FD80C2" }}
+                disabled={busy || !imageHealth || imageHealth.repairable === 0}
+                onClick={onRepairImages}
+              >
+                {repairingImages ? "修复中..." : "重新修复"}
+              </button>
+            </div>
+          </section>
         </div>
+
+        <button
+          type="button"
+          className="mt-4 w-full rounded-xl bg-[#F5F5F5] py-2.5 transition-colors active:bg-[#EBEBEB]"
+          style={{ fontSize: 14, color: "#666", fontWeight: 500 }}
+          onClick={onClose}
+        >
+          关闭
+        </button>
       </section>
+    </div>
+  );
+}
+
+function SyncReportSummary({ report }: { report: SyncReport }) {
+  return (
+    <div
+      className="mb-3 rounded-xl px-3 py-3"
+      style={{ background: report.complete ? "#F0FDF4" : "#FFF7ED" }}
+    >
+      <p
+        className="mb-2 text-xs font-semibold"
+        style={{ color: report.complete ? "#15803D" : "#C2410C" }}
+      >
+        {report.complete ? "同步完整" : "同步未完整"}
+      </p>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-[#555]">
+        <span>扫描 {report.scanned}</span>
+        <span>新增 {report.created}</span>
+        <span>跳过旧内容 {report.skippedExisting}</span>
+        <span>记录失败 {report.failed}</span>
+        <span>图片完成 {report.images.downloaded + report.images.existing}</span>
+        <span>图片异常 {report.images.failed + report.images.skipped}</span>
+      </div>
+      {report.errors.length ? (
+        <div className="mt-3 max-h-28 overflow-y-auto rounded-lg bg-white/70 px-2 py-2">
+          {report.errors.slice(0, 8).map((item) => (
+            <p key={item} className="mb-1 text-[11px] leading-4 text-[#9A3412]">
+              {item}
+            </p>
+          ))}
+          {report.errors.length > 8 ? (
+            <p className="text-[11px] text-[#9A3412]">
+              还有 {report.errors.length - 8} 条异常，已记录在同步日志。
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ImageHealthSummary({ summary }: { summary: FeishuImageHealthSummary }) {
+  return (
+    <div className="mb-3 rounded-xl bg-white px-3 py-3">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-[#555]">
+        <span>已检查 {summary.checked}</span>
+        <span>损坏 {summary.damaged}</span>
+        <span>文件缺失 {summary.missingFiles}</span>
+        <span>处理失败 {summary.failed}</span>
+        <span>不支持 {summary.unsupported}</span>
+        <span>可修复 {summary.repairable}</span>
+      </div>
     </div>
   );
 }

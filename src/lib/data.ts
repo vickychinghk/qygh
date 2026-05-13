@@ -6,7 +6,6 @@ import {
   applySubmissionFilter,
   filterDisplayableImages,
   formatDefaultIssueTitle,
-  reorderIssueItemsToPosition,
   sortSubmissionsBySerialDesc,
   type SubmissionFilter,
 } from "@/lib/selection-rules";
@@ -229,7 +228,6 @@ export async function removeSubmissionFromIssue(submissionId: string) {
   }
 
   await prisma.issueItem.deleteMany({ where: { submissionId } });
-  await renormalizeIssueOrder(existing.issueId);
   revalidatePath("/app");
 }
 
@@ -470,34 +468,18 @@ export async function moveIssueItem(issueItemId: string, direction: "up" | "down
   revalidatePath("/app");
 }
 
-export async function reorderIssueItemToPosition(
+export async function updateIssueItemSortOrder(
   issueItemId: string,
-  targetPosition: number,
+  sortOrder: number,
 ) {
-  const current = await prisma.issueItem.findUnique({
-    where: { id: issueItemId },
-    select: { issueId: true },
-  });
-
-  if (!current) {
+  if (!Number.isFinite(sortOrder)) {
     return;
   }
 
-  const items = await prisma.issueItem.findMany({
-    where: { issueId: current.issueId },
-    select: { id: true, sortOrder: true },
-    orderBy: { sortOrder: "asc" },
+  await prisma.issueItem.update({
+    where: { id: issueItemId },
+    data: { sortOrder },
   });
-  const next = reorderIssueItemsToPosition(items, issueItemId, targetPosition);
-
-  await prisma.$transaction(
-    next.map((item) =>
-      prisma.issueItem.update({
-        where: { id: item.id },
-        data: { sortOrder: item.sortOrder },
-      }),
-    ),
-  );
 
   revalidatePath("/app");
 }
@@ -552,21 +534,4 @@ export async function getExportIssue(issueId: string) {
 
 export async function getPreviewIssue(issueId: string) {
   return getExportIssue(issueId);
-}
-
-async function renormalizeIssueOrder(issueId: string) {
-  const items = await prisma.issueItem.findMany({
-    where: { issueId },
-    orderBy: { sortOrder: "asc" },
-    select: { id: true },
-  });
-
-  await prisma.$transaction(
-    items.map((item, index) =>
-      prisma.issueItem.update({
-        where: { id: item.id },
-        data: { sortOrder: index + 1 },
-      }),
-    ),
-  );
 }

@@ -72,7 +72,7 @@ model IssueItem {
   id           String     @id @default(cuid())
   issueId      String
   submissionId String
-  sortOrder    Int
+  sortOrder    Float
   confirmed    Boolean    @default(false)
   issue        Issue      @relation(fields: [issueId], references: [id], onDelete: Cascade)
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)

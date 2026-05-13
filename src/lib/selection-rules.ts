@@ -1,3 +1,5 @@
+export { SCHOOL_OPTIONS } from "@/lib/school-theme";
+
 export type CommentSelectionState = {
   id: string;
   submissionId: string;
@@ -20,16 +22,6 @@ export type SubmissionFilter = {
   serialFrom?: string;
   serialTo?: string;
 };
-
-export const SCHOOL_OPTIONS = [
-  "北京大学",
-  "清华大学",
-  "清+北（TP-LINK）",
-  "复旦大学",
-  "上海交大",
-  "中国人民大学",
-  "其他",
-] as const;
 
 export function selectFinalCommentState<T extends CommentSelectionState>(
   comments: T[],
@@ -184,6 +176,16 @@ export function reorderIssueItemsToPosition<T extends { id: string; sortOrder: n
     ...item,
     sortOrder: index + 1,
   }));
+}
+
+export function parseIssueSortOrderInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || !/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function canDeleteComment(

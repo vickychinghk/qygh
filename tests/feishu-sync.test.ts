@@ -3,6 +3,7 @@ import {
   buildBitableSearchRequest,
   DEFAULT_FEISHU_FIELD_MAPPING,
   filterNewFeishuRecords,
+  summarizeFeishuImageHealth,
   mapFeishuRecordToSubmission,
   parseBitableUrl,
   summarizeImageCacheResults,
@@ -157,6 +158,61 @@ describe("summarizeImageCacheResults", () => {
       existing: 1,
       failed: 1,
       skipped: 2,
+    });
+  });
+});
+
+describe("summarizeFeishuImageHealth", () => {
+  it("counts only damaged Feishu images and ignores manual uploads", () => {
+    const result = summarizeFeishuImageHealth(
+      [
+        {
+          id: "ready-feishu",
+          localPath: "/uploads/processed/feishu/token-a.jpg",
+          originalPath: "/uploads/originals/feishu/token-a.jpg",
+          assetKind: "IMAGE",
+          processingStatus: "READY",
+          bytes: 123,
+          remoteUrl: "https://open.feishu.cn/image-a",
+        },
+        {
+          id: "failed-feishu",
+          localPath: "/uploads/originals/feishu/token-b.jpg",
+          originalPath: "/uploads/originals/feishu/token-b.jpg",
+          assetKind: "UNSUPPORTED",
+          processingStatus: "FAILED",
+          bytes: 0,
+          remoteUrl: "https://open.feishu.cn/image-b",
+        },
+        {
+          id: "missing-feishu",
+          localPath: "/uploads/processed/feishu/token-c.jpg",
+          originalPath: "/uploads/originals/feishu/token-c.jpg",
+          assetKind: "IMAGE",
+          processingStatus: "READY",
+          bytes: 88,
+          remoteUrl: "https://open.feishu.cn/image-c",
+        },
+        {
+          id: "manual-failed",
+          localPath: "/uploads/processed/manual/token-d.jpg",
+          originalPath: "/uploads/originals/manual/token-d.jpg",
+          assetKind: "UNSUPPORTED",
+          processingStatus: "FAILED",
+          bytes: 0,
+          remoteUrl: null,
+        },
+      ],
+      (path) => !path.includes("token-c"),
+    );
+
+    expect(result).toEqual({
+      checked: 3,
+      damaged: 2,
+      failed: 1,
+      missingFiles: 1,
+      unsupported: 1,
+      repairable: 2,
     });
   });
 });

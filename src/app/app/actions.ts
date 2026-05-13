@@ -11,17 +11,22 @@ import {
   moveSubmissionToIssue,
   renameIssue,
   removeSubmissionFromIssue,
-  reorderIssueItemToPosition,
   selectFinalComment,
   setSubmissionImageEnabled,
   setSubmissionIssueConfirmed,
   toggleCommentStar,
   toggleSubmissionStar,
   updateComment,
+  updateIssueItemSortOrder,
   updateSubmissionSchool,
 } from "@/lib/data";
 import { requireCurrentUser, signOut } from "@/lib/auth";
-import { clearBusinessData, syncFeishuSubmissions } from "@/lib/feishu-sync";
+import {
+  clearBusinessData,
+  inspectDamagedFeishuImages,
+  repairDamagedFeishuImages,
+  syncFeishuSubmissions,
+} from "@/lib/feishu-sync";
 import type { SubmissionFilter } from "@/lib/selection-rules";
 
 export async function toggleSubmissionStarAction(submissionId: string) {
@@ -122,12 +127,12 @@ export async function moveIssueItemAction(
   await moveIssueItem(issueItemId, direction);
 }
 
-export async function reorderIssueItemToPositionAction(
+export async function updateIssueItemSortOrderAction(
   issueItemId: string,
-  targetPosition: number,
+  sortOrder: number,
 ) {
   await requireCurrentUser();
-  await reorderIssueItemToPosition(issueItemId, targetPosition);
+  await updateIssueItemSortOrder(issueItemId, sortOrder);
 }
 
 export async function setSubmissionImageEnabledAction(
@@ -153,6 +158,16 @@ export async function addSubmissionImageAction(formData: FormData) {
 export async function syncFeishuSubmissionsAction() {
   await requireCurrentUser();
   return syncFeishuSubmissions();
+}
+
+export async function inspectDamagedFeishuImagesAction() {
+  await requireCurrentUser();
+  return inspectDamagedFeishuImages();
+}
+
+export async function repairDamagedFeishuImagesAction() {
+  await requireCurrentUser();
+  return repairDamagedFeishuImages();
 }
 
 export async function clearBusinessDataAction() {

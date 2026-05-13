@@ -7,6 +7,7 @@ import {
   hasUserReacted,
   isWebDisplayableImage,
   getSubmissionIssueLabel,
+  parseIssueSortOrderInput,
   SCHOOL_OPTIONS,
   reorderIssueItemsToPosition,
   selectFinalCommentState,
@@ -237,6 +238,21 @@ describe("reorderIssueItemsToPosition", () => {
       { id: "a", sortOrder: 2 },
       { id: "b", sortOrder: 3 },
     ]);
+  });
+});
+
+describe("parseIssueSortOrderInput", () => {
+  it("accepts negative, zero, integer, and decimal issue numbers", () => {
+    expect(parseIssueSortOrderInput("-2")).toBe(-2);
+    expect(parseIssueSortOrderInput("0")).toBe(0);
+    expect(parseIssueSortOrderInput("36.5")).toBe(36.5);
+    expect(parseIssueSortOrderInput(" 37 ")).toBe(37);
+  });
+
+  it("rejects empty and non-numeric issue numbers", () => {
+    expect(parseIssueSortOrderInput("")).toBeNull();
+    expect(parseIssueSortOrderInput("abc")).toBeNull();
+    expect(parseIssueSortOrderInput("36abc")).toBeNull();
   });
 });
 

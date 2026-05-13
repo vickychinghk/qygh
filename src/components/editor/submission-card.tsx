@@ -21,9 +21,11 @@ import { cn } from "@/lib/utils";
 import {
   getSubmissionIssueLabel,
   hasUserReacted,
+  parseIssueSortOrderInput,
   SCHOOL_OPTIONS,
   sortImagesForEditing,
 } from "@/lib/selection-rules";
+import { getSchoolTheme } from "@/lib/school-theme";
 
 type Reaction = {
   id: string;
@@ -108,7 +110,7 @@ export function SubmissionCard({
     issueItemId: string,
     direction: "up" | "down",
   ) => void | Promise<void>;
-  onMoveToPosition: (issueItemId: string, position: number) => void | Promise<void>;
+  onMoveToPosition: (issueItemId: string, sortOrder: number) => void | Promise<void>;
   onAddToIssue: (issueId: string, submissionId: string) => void | Promise<void>;
   onMoveToIssue: (submissionId: string, issueId: string) => void | Promise<void>;
   onRemoveFromIssue: (submissionId: string) => void | Promise<void>;
@@ -468,6 +470,7 @@ function SubmissionMeta({
   const [open, setOpen] = useState(false);
   const [customValue, setCustomValue] = useState("");
   const isPreset = SCHOOL_OPTIONS.includes(submission.school as (typeof SCHOOL_OPTIONS)[number]);
+  const schoolTheme = getSchoolTheme(submission.school);
 
   function selectSchool(school: string) {
     void onUpdateSchool(submission.id, school);
@@ -487,7 +490,13 @@ function SubmissionMeta({
             }}
             className="flex max-w-full items-center gap-1 py-1 text-left"
           >
-            <span className="truncate text-[13px] font-semibold text-[#1f2329]">
+            <span
+              className="truncate rounded-md px-1.5 py-0.5 text-[13px] font-semibold"
+              style={{
+                background: schoolTheme.ui.background,
+                color: schoolTheme.ui.color,
+              }}
+            >
               {submission.school}
             </span>
             {!isPreset ? (
@@ -506,27 +515,33 @@ function SubmissionMeta({
           {open ? (
             <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-64 rounded-xl bg-white p-2 shadow-[0_8px_28px_rgba(31,35,41,0.14)]">
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {SCHOOL_OPTIONS.map((school) => (
-                  <button
-                    key={school}
-                    type="button"
-                    onClick={() => {
-                      if (school === "其他") {
-                        setCustomValue(isPreset ? "" : submission.school);
-                        return;
-                      }
-                      selectSchool(school);
-                    }}
-                    className={cn(
-                      "rounded-md px-2 py-1.5 text-xs transition-colors",
-                      submission.school === school
-                        ? "bg-[#fdeff7] font-semibold text-primary"
-                        : "bg-[#f5f6f7] text-[#1f2329] active:bg-[#eff0f1]",
-                    )}
-                  >
-                    {school}
-                  </button>
-                ))}
+                {SCHOOL_OPTIONS.map((school) => {
+                  const theme = getSchoolTheme(school);
+                  const selected = submission.school === school;
+
+                  return (
+                    <button
+                      key={school}
+                      type="button"
+                      onClick={() => {
+                        if (school === "其他") {
+                          setCustomValue(isPreset ? "" : submission.school);
+                          return;
+                        }
+                        selectSchool(school);
+                      }}
+                      className="rounded-md px-2 py-1.5 text-xs transition-colors"
+                      style={{
+                        background: selected ? theme.ui.background : "#f5f6f7",
+                        border: `1px solid ${selected ? theme.ui.border : "transparent"}`,
+                        color: selected ? theme.ui.color : "#1f2329",
+                        fontWeight: selected ? 600 : 400,
+                      }}
+                    >
+                      {school}
+                    </button>
+                  );
+                })}
               </div>
               <div className="flex items-center gap-1.5">
                 <input
@@ -723,7 +738,7 @@ function IssueOrderHeader({
   isFirst: boolean;
   isLast: boolean;
   onMove: (issueItemId: string, direction: "up" | "down") => void | Promise<void>;
-  onMoveToPosition: (issueItemId: string, position: number) => void | Promise<void>;
+  onMoveToPosition: (issueItemId: string, sortOrder: number) => void | Promise<void>;
   onConfirmSubmission: (
     submissionId: string,
     confirmed: boolean,
@@ -740,9 +755,9 @@ function IssueOrderHeader({
 
   function commit() {
     setFocused(false);
-    const position = Number.parseInt(value, 10);
-    if (Number.isFinite(position) && position > 0 && position !== issueItem.sortOrder) {
-      void onMoveToPosition(issueItem.id, position);
+    const sortOrder = parseIssueSortOrderInput(value);
+    if (sortOrder !== null && sortOrder !== issueItem.sortOrder) {
+      void onMoveToPosition(issueItem.id, sortOrder);
       return;
     }
 
@@ -762,7 +777,7 @@ function IssueOrderHeader({
         <span className="text-[11px] font-semibold text-primary">No.</span>
         <input
           value={value}
-          inputMode="numeric"
+          inputMode="decimal"
           onChange={(event) => setValue(event.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={commit}

@@ -4,6 +4,7 @@ import { Check, ChevronDown, X } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import { SCHOOL_OPTIONS, type SubmissionFilter } from "@/lib/selection-rules";
+import { getSchoolTheme } from "@/lib/school-theme";
 
 export const DEFAULT_SUBMISSION_FILTER: Required<SubmissionFilter> = {
   school: "",
@@ -89,27 +90,33 @@ export function FilterSheet({
           <Field label="学校">
             <div className="rounded-xl border border-[#DEE0E3] bg-white p-2">
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {SCHOOL_OPTIONS.map((school) => (
-                  <button
-                    key={school}
-                    type="button"
-                    onClick={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        school: current.school === school ? "" : school,
-                      }))
-                    }
-                    className="rounded-md px-2.5 py-1.5 transition-colors"
-                    style={{
-                      background: draft.school === school ? "#FFF0F8" : "#F5F6F7",
-                      color: draft.school === school ? "#FD80C2" : "#1F2329",
-                      fontSize: 13,
-                      fontWeight: draft.school === school ? 600 : 400,
-                    }}
-                  >
-                    {school}
-                  </button>
-                ))}
+                {SCHOOL_OPTIONS.map((school) => {
+                  const theme = getSchoolTheme(school);
+                  const selected = draft.school === school;
+
+                  return (
+                    <button
+                      key={school}
+                      type="button"
+                      onClick={() =>
+                        setDraft((current) => ({
+                          ...current,
+                          school: current.school === school ? "" : school,
+                        }))
+                      }
+                      className="rounded-md px-2.5 py-1.5 transition-colors"
+                      style={{
+                        background: selected ? theme.ui.background : "#F5F6F7",
+                        border: `1px solid ${selected ? theme.ui.border : "transparent"}`,
+                        color: selected ? theme.ui.color : "#1F2329",
+                        fontSize: 13,
+                        fontWeight: selected ? 600 : 400,
+                      }}
+                    >
+                      {school}
+                    </button>
+                  );
+                })}
               </div>
               <input
                 value={draft.school}

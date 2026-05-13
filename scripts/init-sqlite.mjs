@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS "IssueItem" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "issueId" TEXT NOT NULL,
   "submissionId" TEXT NOT NULL,
-  "sortOrder" INTEGER NOT NULL,
+  "sortOrder" REAL NOT NULL,
   "confirmed" BOOLEAN NOT NULL DEFAULT false,
   CONSTRAINT "IssueItem_issueId_fkey" FOREIGN KEY ("issueId") REFERENCES "Issue" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "IssueItem_submissionId_fkey" FOREIGN KEY ("submissionId") REFERENCES "Submission" ("id") ON DELETE CASCADE ON UPDATE CASCADE

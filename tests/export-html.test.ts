@@ -53,6 +53,141 @@ describe("buildIssueHtml", () => {
     expect(html).not.toContain("未确认不该导出");
   });
 
+  it("renders the default header and footer image blocks around the issue body", () => {
+    const html = buildIssueHtml({
+      title: "测试篇",
+      items: [
+        {
+          confirmed: true,
+          sortOrder: 1,
+          school: "北京大学",
+          submitterQuote: "正文第一条",
+          finalComment: null,
+          images: [{ src: "/uploads/a.webp", width: 1000, height: 500 }],
+        },
+      ],
+    });
+
+    expect(html).toContain('data-src="/export-assets/top.webp"');
+    expect(html).toContain('data-ratio="0.425531914893617"');
+    expect(html).toContain('data-w="940"');
+    expect(html.indexOf("/export-assets/top.webp")).toBeLessThan(
+      html.indexOf("本期共收录迷惑行为"),
+    );
+    expect(html).toContain("/export-assets/footer-1.png");
+    expect(html).toContain("/export-assets/footer-2.png");
+    expect(html).toContain("/export-assets/footer-3.png");
+    expect(html.match(/欢迎投稿/g)).toHaveLength(3);
+    expect(html.indexOf("正文第一条")).toBeLessThan(
+      html.indexOf("/export-assets/footer-1.png"),
+    );
+  });
+
+  it("uses explicit numeric order as the displayed number and supports decimal sorting", () => {
+    const html = buildIssueHtml({
+      title: "测试篇",
+      items: [
+        {
+          confirmed: true,
+          sortOrder: 36.5,
+          school: "北京大学",
+          submitterQuote: "半路插队",
+          finalComment: null,
+          images: [],
+        },
+        {
+          confirmed: true,
+          sortOrder: -1,
+          school: "清华大学",
+          submitterQuote: "序章",
+          finalComment: null,
+          images: [],
+        },
+        {
+          confirmed: true,
+          sortOrder: 37,
+          school: "清+北（TP-LINK）",
+          submitterQuote: "下一条",
+          finalComment: null,
+          images: [],
+        },
+      ],
+    });
+
+    expect(html.indexOf("No.-1")).toBeLessThan(html.indexOf("No.36.5"));
+    expect(html.indexOf("No.36.5")).toBeLessThan(html.indexOf("No.37"));
+    expect(html).toContain("rgb(124, 46, 154)");
+    expect(html).toContain("rgb(167, 42, 42)");
+    expect(html).toContain(
+      "linear-gradient(to right, rgb(192, 0, 0) 0%, rgb(112, 48, 160) 80%)",
+    );
+  });
+
+  it("renders multiline comments inside one item before its image group", () => {
+    const html = buildIssueHtml({
+      title: "测试篇",
+      items: [
+        {
+          confirmed: true,
+          sortOrder: 1,
+          school: "北京大学",
+          submitterQuote: "第一行\n第二行",
+          finalComment: null,
+          images: [{ src: "/uploads/a.webp", width: 1080, height: 720 }],
+        },
+      ],
+    });
+
+    expect(html.indexOf("第一行")).toBeLessThan(html.indexOf("第二行"));
+    expect(html.indexOf("第二行")).toBeLessThan(html.indexOf('data-src="/uploads/a.webp"'));
+  });
+
+  it("allows per-item source note overrides", () => {
+    const html = buildIssueHtml({
+      title: "测试篇",
+      items: [
+        {
+          confirmed: true,
+          sortOrder: 1,
+          school: "复旦大学",
+          submitterQuote: "友校投稿",
+          finalComment: null,
+          sourceNote: "来自友校复旦大学",
+          images: [],
+        },
+      ],
+    });
+
+    expect(html).toContain("来自友校复旦大学");
+    expect(html).not.toContain("来自粉丝投稿");
+  });
+
+  it("chooses image display width from image ratio", () => {
+    const html = buildIssueHtml({
+      title: "测试篇",
+      items: [
+        {
+          confirmed: true,
+          sortOrder: 1,
+          school: "北京大学",
+          submitterQuote: "图片宽度测试",
+          finalComment: null,
+          images: [
+            { src: "/uploads/wide.webp", width: 1000, height: 100 },
+            { src: "/uploads/default.webp", width: 1000, height: 750 },
+            { src: "/uploads/tall.webp", width: 1000, height: 1700 },
+            { src: "/uploads/very-tall.webp", width: 1000, height: 2700 },
+          ],
+        },
+      ],
+    });
+
+    expect(html).toContain('width: 90%;height: auto;box-shadow');
+    expect(html).toContain('width: 80%;height: auto;box-shadow');
+    expect(html).toContain('width: 60%;height: auto;box-shadow');
+    expect(html).toContain('width: 30%;height: auto;box-shadow');
+  });
+
   it("uses the submitter quote when no final comment is selected", () => {
     const html = buildIssueHtml({
       title: "测试篇",

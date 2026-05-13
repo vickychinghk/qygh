@@ -6,6 +6,7 @@ import {
   type NormalizedAsset,
 } from "@/lib/image-pipeline";
 import { prisma } from "@/lib/prisma";
+import { clearUserGeneratedData } from "@/lib/user-data-cleanup";
 
 const FEISHU_API_BASE = "https://open.feishu.cn/open-apis";
 const MAX_IMAGE_DOWNLOADS_PER_SYNC = Number(
@@ -134,6 +135,25 @@ export type ImageCacheSummary = {
   existing: number;
   failed: number;
   skipped: number;
+};
+
+export type FeishuImageHealthSummary = {
+  checked: number;
+  damaged: number;
+  failed: number;
+  missingFiles: number;
+  unsupported: number;
+  repairable: number;
+};
+
+type FeishuImageHealthInput = {
+  id: string;
+  localPath: string;
+  originalPath: string | null;
+  assetKind: string;
+  processingStatus: string;
+  bytes: number | null;
+  remoteUrl: string | null;
 };
 
 export type FeishuSyncProgressEvent =
@@ -445,16 +465,7 @@ export async function syncFeishuSubmissions(options: FeishuSyncOptions = {}) {
 }
 
 export async function clearBusinessData() {
-  await prisma.$transaction([
-    prisma.selection.deleteMany(),
-    prisma.reaction.deleteMany(),
-    prisma.comment.deleteMany(),
-    prisma.issueItem.deleteMany(),
-    prisma.issue.deleteMany(),
-    prisma.submissionImage.deleteMany(),
-    prisma.submission.deleteMany(),
-    prisma.syncJob.deleteMany(),
-  ]);
+  await clearUserGeneratedData();
 }
 
 type SyncCursor = {
@@ -480,7 +491,6 @@ async function cacheMissingExistingImages(submissionId: string, token: string) {
   const images = await prisma.submissionImage.findMany({
     where: {
       submissionId,
-      localPath: { startsWith: "/uploads/feishu/" },
       remoteUrl: { not: null },
     },
     select: {
@@ -493,7 +503,11 @@ async function cacheMissingExistingImages(submissionId: string, token: string) {
     },
   });
   const missing = images
-    .filter((image) => !existsSync(join(process.cwd(), "public", image.localPath)))
+    .filter(
+      (image) =>
+        isFeishuImagePath(image.localPath, image.originalPath) &&
+        !existsSync(join(process.cwd(), "public", image.localPath)),
+    )
     .map((image) => ({
       remoteUrl: image.remoteUrl,
       tmpUrl: null,
@@ -507,6 +521,134 @@ async function cacheMissingExistingImages(submissionId: string, token: string) {
 
   const cached = await cacheFeishuImages(missing, token);
   return cached.map((item) => item.result);
+}
+
+export function summarizeFeishuImageHealth(
+  images: FeishuImageHealthInput[],
+  publicFileExists: (path: string) => boolean = (path) =>
+    existsSync(join(process.cwd(), "public", path)),
+): FeishuImageHealthSummary {
+  return images.reduce<FeishuImageHealthSummary>(
+    (summary, image) => {
+      if (!isFeishuImagePath(image.localPath, image.originalPath)) {
+        return summary;
+      }
+
+      summary.checked += 1;
+      const health = getFeishuImageHealth(image, publicFileExists);
+      if (!health.damaged) {
+        return summary;
+      }
+
+      summary.damaged += 1;
+      if (health.failed) {
+        summary.failed += 1;
+      }
+      if (health.missingFile) {
+        summary.missingFiles += 1;
+      }
+      if (health.unsupported) {
+        summary.unsupported += 1;
+      }
+      if (image.remoteUrl) {
+        summary.repairable += 1;
+      }
+      return summary;
+    },
+    {
+      checked: 0,
+      damaged: 0,
+      failed: 0,
+      missingFiles: 0,
+      unsupported: 0,
+      repairable: 0,
+    },
+  );
+}
+
+export async function inspectDamagedFeishuImages() {
+  const images = await prisma.submissionImage.findMany({
+    select: {
+      id: true,
+      localPath: true,
+      originalPath: true,
+      assetKind: true,
+      processingStatus: true,
+      bytes: true,
+      remoteUrl: true,
+    },
+  });
+
+  return summarizeFeishuImageHealth(images);
+}
+
+export async function repairDamagedFeishuImages() {
+  loadLocalEnv();
+  imageDownloadsThisSync = 0;
+  const config = readFeishuConfigFromEnv();
+  const token = await getTenantAccessToken(config);
+  const images = await prisma.submissionImage.findMany({
+    where: { remoteUrl: { not: null } },
+    select: {
+      id: true,
+      localPath: true,
+      originalPath: true,
+      assetKind: true,
+      processingStatus: true,
+      bytes: true,
+      mimeType: true,
+      remoteUrl: true,
+      sortOrder: true,
+    },
+  });
+  const damaged = images.filter((image) => {
+    if (!isFeishuImagePath(image.localPath, image.originalPath)) {
+      return false;
+    }
+    return getFeishuImageHealth(image).damaged;
+  });
+
+  let repaired = 0;
+  const results: ImageCacheResult[] = [];
+
+  for (const image of damaged) {
+    const cached = await cacheFeishuImages(
+      [
+        {
+          remoteUrl: image.remoteUrl,
+          tmpUrl: null,
+          fileToken: inferTokenFromPath(image.originalPath ?? image.localPath),
+          fileName: basename(image.originalPath ?? image.localPath),
+          remoteMimeType: image.mimeType,
+          bytes: image.bytes,
+          sortOrder: image.sortOrder,
+        },
+      ],
+      token,
+    );
+    const item = cached[0];
+    if (!item) {
+      continue;
+    }
+    results.push(item.result);
+    if (item.result.status !== "downloaded") {
+      continue;
+    }
+
+    await prisma.submissionImage.update({
+      where: { id: image.id },
+      data: toSubmissionImageUpdateInput(item.image),
+    });
+    repaired += 1;
+  }
+
+  const summary = await inspectDamagedFeishuImages();
+  return {
+    before: summarizeFeishuImageHealth(images),
+    after: summary,
+    repaired,
+    images: summarizeImageCacheResults(results),
+  };
 }
 
 async function emitProgress(
@@ -839,6 +981,25 @@ function toSubmissionImageCreateInput(image: FeishuSubmissionImageInput) {
   };
 }
 
+function toSubmissionImageUpdateInput(image: FeishuSubmissionImageInput) {
+  return {
+    remoteUrl: image.remoteUrl,
+    localPath: image.localPath ?? "",
+    originalPath: image.originalPath ?? null,
+    assetKind: image.assetKind ?? "IMAGE",
+    width: image.width ?? null,
+    height: image.height ?? null,
+    bytes: image.bytes,
+    originalBytes: image.originalBytes ?? image.bytes ?? null,
+    processedBytes: image.processedBytes ?? null,
+    originalFormat: image.originalFormat ?? null,
+    processedFormat: image.processedFormat ?? null,
+    mimeType: image.mimeType ?? image.remoteMimeType ?? null,
+    processingStatus: image.processingStatus ?? "READY",
+    processingError: image.processingError ?? null,
+  };
+}
+
 async function persistFailedFeishuAsset(
   image: FeishuSubmissionImageInput,
   error: unknown,
@@ -892,6 +1053,29 @@ function predictProcessedPath(image: FeishuSubmissionImageInput) {
 
 function inferTokenFromPath(path: string) {
   return basename(path).split("-")[0] || crypto.randomUUID();
+}
+
+function isFeishuImagePath(localPath: string, originalPath?: string | null) {
+  return localPath.includes("/feishu/") || Boolean(originalPath?.includes("/feishu/"));
+}
+
+function getFeishuImageHealth(
+  image: FeishuImageHealthInput,
+  publicFileExists: (path: string) => boolean = (path) =>
+    existsSync(join(process.cwd(), "public", path)),
+) {
+  const paths = [image.localPath, image.originalPath].filter(Boolean) as string[];
+  const missingFile = paths.some((path) => !publicFileExists(path));
+  const failed = image.processingStatus === "FAILED";
+  const unsupported = image.assetKind === "UNSUPPORTED";
+  const empty = image.bytes === 0;
+
+  return {
+    damaged: failed || unsupported || missingFile || empty,
+    failed,
+    unsupported,
+    missingFile,
+  };
 }
 
 function loadLocalEnv() {
