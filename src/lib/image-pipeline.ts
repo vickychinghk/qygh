@@ -237,7 +237,7 @@ async function decodeHeifWithNode(buffer: Buffer) {
   return Buffer.isBuffer(output) ? output : Buffer.from(new Uint8Array(output));
 }
 
-function shouldTrySystemJpegDecode(
+export function shouldTrySystemJpegDecode(
   error: unknown,
   originalFormat: string | null,
   fileName: string,
@@ -253,12 +253,7 @@ function shouldTrySystemJpegDecode(
     extension === "heic" ||
     extension === "heif" ||
     message.includes("heif") ||
-    message.includes("heic") ||
-    originalFormat === "jpeg" ||
-    originalFormat === "jpg" ||
-    remoteMimeType?.toLowerCase() === "image/jpeg" ||
-    extension === "jpg" ||
-    extension === "jpeg"
+    message.includes("heic")
   );
 }
 

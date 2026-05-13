@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAssetPaths,
   normalizeAssetBuffer,
+  shouldTrySystemJpegDecode,
   SHORT_EDGE_TARGET,
 } from "@/lib/image-pipeline";
 
@@ -136,5 +137,29 @@ describe("normalizeAssetBuffer", () => {
       "/uploads/originals/feishu/video-token-clip.mov",
     );
     expect((await stat(join(root, result.localPath))).size).toBe(video.byteLength);
+  });
+});
+
+describe("shouldTrySystemJpegDecode", () => {
+  it("does not treat plain JPEG decode failures as HEIC fallback candidates", () => {
+    expect(
+      shouldTrySystemJpegDecode(
+        new Error("VipsJpeg: Corrupt JPEG data: extraneous bytes before marker"),
+        "jpeg",
+        "IMG_20240825_023312.jpg",
+        "image/jpeg",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps HEIC and HEIF inputs eligible for the node decoder fallback", () => {
+    expect(
+      shouldTrySystemJpegDecode(
+        new Error("source image decode failed"),
+        "heif",
+        "IMG_4106.HEIC",
+        "image/heic",
+      ),
+    ).toBe(true);
   });
 });
