@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { validateRegistrationInput } from "@/lib/auth-registration";
 
 describe("validateRegistrationInput", () => {
   afterEach(() => {
     delete process.env.REGISTRATION_INVITE_CODE;
+    vi.unstubAllEnvs();
   });
 
   it("normalizes a valid registration payload", () => {
@@ -89,8 +90,7 @@ describe("validateRegistrationInput", () => {
   });
 
   it("fails closed in production when the invite code is missing", () => {
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    vi.stubEnv("NODE_ENV", "production");
 
     expect(
       validateRegistrationInput({
@@ -101,7 +101,5 @@ describe("validateRegistrationInput", () => {
         inviteCode: "任何口令",
       }),
     ).toEqual({ ok: false, message: "注册口令尚未配置" });
-
-    process.env.NODE_ENV = previousNodeEnv;
   });
 });

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS "User" (
   "username" TEXT NOT NULL UNIQUE,
   "displayName" TEXT NOT NULL,
   "passwordHash" TEXT NOT NULL,
+  "workingIssueId" TEXT,
   "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -138,6 +139,15 @@ CREATE TABLE IF NOT EXISTS "SyncJob" (
   "error" TEXT
 );
 `);
+
+const userColumns = db
+  .prepare(`PRAGMA table_info("User")`)
+  .all()
+  .map((column) => column.name);
+
+if (!userColumns.includes("workingIssueId")) {
+  db.exec(`ALTER TABLE "User" ADD COLUMN "workingIssueId" TEXT;`);
+}
 
 const imageColumns = db
   .prepare(`PRAGMA table_info("SubmissionImage")`)

@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Check,
   ChevronDown,
@@ -10,6 +10,7 @@ import {
   ImageOff,
   Info,
   Inbox,
+  KeyRound,
   LogOut,
   MoreHorizontal,
   Pencil,
@@ -44,17 +45,25 @@ import {
   repairDamagedFeishuImagesAction,
   renameIssueAction,
   selectFinalCommentAction,
+  setWorkingIssueAction,
   setSubmissionImageEnabledAction,
   setSubmissionIssueConfirmedAction,
   toggleCommentStarAction,
   toggleSubmissionStarAction,
   updateCommentAction,
   updateIssueItemSortOrderAction,
+  updateUserProfileAction,
   updateSubmissionSchoolAction,
 } from "@/app/app/actions";
+import {
+  IssueTitleLine,
+  SetWorkingIssueChip,
+} from "@/components/editor/issue-controls";
 import { cn } from "@/lib/utils";
+import type { ProfileInput } from "@/lib/auth-profile";
 
-type Overlay = "none" | "profile" | "issue" | "filter" | "sync" | "about";
+type Overlay = "none" | "profile" | "account" | "issue" | "filter" | "sync" | "about";
+const PAGE_SIZE = 10;
 
 type SyncReport = {
   status: "SUCCESS" | "PARTIAL" | "FAILED";
@@ -114,6 +123,9 @@ export function EditorApp({
   const [, startTransition] = useTransition();
   const [overlay, setOverlay] = useState<Overlay>("none");
   const [tab, setTab] = useState<"library" | "issue">("library");
+  const [libraryPage, setLibraryPage] = useState(1);
+  const [issuePage, setIssuePage] = useState(1);
+  const listRef = useRef<HTMLElement>(null);
   const [renameValue, setRenameValue] = useState(snapshot.issue?.title ?? "");
   const [issueError, setIssueError] = useState<string | null>(null);
   const [filter, setFilter] =
@@ -145,8 +157,11 @@ export function EditorApp({
   }, [snapshot.issue?.items]);
 
   const librarySubmissions = useMemo(
-    () => applySubmissionFilter(snapshot.submissions, filter),
-    [filter, snapshot.submissions],
+    () =>
+      applySubmissionFilter(snapshot.submissions, filter, {
+        currentUserId: currentUser.id,
+      }),
+    [currentUser.id, filter, snapshot.submissions],
   );
 
   const issueItems = useMemo(() => {
@@ -170,9 +185,11 @@ export function EditorApp({
     }));
 
     return normalized.filter((item) =>
-      applySubmissionFilter([item.submission], filter).length > 0,
+      applySubmissionFilter([item.submission], filter, {
+        currentUserId: currentUser.id,
+      }).length > 0,
     );
-  }, [filter, selectedIssue]);
+  }, [currentUser.id, filter, selectedIssue]);
 
   const isFiltered = Object.entries(filter).some(
     ([key, value]) =>
@@ -180,10 +197,34 @@ export function EditorApp({
   );
   const currentListCount =
     tab === "library" ? librarySubmissions.length : issueItems.length;
+  const activePage = tab === "library" ? libraryPage : issuePage;
+  const pagedLibrarySubmissions = useMemo(
+    () => paginateItems(librarySubmissions, libraryPage),
+    [libraryPage, librarySubmissions],
+  );
+  const pagedIssueItems = useMemo(
+    () => paginateItems(issueItems, issuePage),
+    [issueItems, issuePage],
+  );
+  const issuePageStart = (issuePage - 1) * PAGE_SIZE;
 
   useEffect(() => {
     setRenameValue(snapshot.issue?.title ?? "");
   }, [snapshot.issue?.id, snapshot.issue?.title]);
+
+  useEffect(() => {
+    setLibraryPage(1);
+    setIssuePage(1);
+    scrollListToTop();
+  }, [filter, snapshot.issue?.id]);
+
+  useEffect(() => {
+    setLibraryPage((page) => clampPage(page, librarySubmissions.length));
+  }, [librarySubmissions.length]);
+
+  useEffect(() => {
+    setIssuePage((page) => clampPage(page, issueItems.length));
+  }, [issueItems.length]);
 
   return (
     <main
@@ -237,7 +278,7 @@ export function EditorApp({
             className="flex items-center gap-1.5 px-4 py-3 transition-colors active:bg-[#FFF0F8]"
           >
             <span style={{ fontSize: 15, fontWeight: 600, color: "#111" }}>
-              {snapshot.issue?.title ?? "未选择刊数"}
+              本刊
             </span>
             <ChevronDown size={15} style={{ color: "#FD80C2" }} />
           </button>
@@ -259,16 +300,34 @@ export function EditorApp({
         </div>
       ) : null}
 
-      <section className="flex-1 overflow-y-auto" style={{ paddingBottom: 70 }}>
+      <PaginationBar
+        count={currentListCount}
+        page={activePage}
+        onPageChange={(page) => {
+          if (tab === "library") {
+            setLibraryPage(page);
+          } else {
+            setIssuePage(page);
+          }
+          scrollListToTop();
+        }}
+      />
+
+      <section
+        ref={listRef}
+        className="flex-1 overflow-y-auto"
+        style={{ paddingBottom: 70 }}
+      >
         <div className="px-3 pt-3">
         {tab === "library" ? (
           librarySubmissions.length > 0 ? (
             <Feed>
-              {librarySubmissions.map((submission) => (
+              {pagedLibrarySubmissions.map((submission) => (
                 <SubmissionCard
                   key={submission.id}
                   currentUserId={currentUser.id}
                   issues={snapshot.issues}
+                  workingIssueId={snapshot.workingIssueId}
                   submission={submission}
                   issueItem={issueItemsBySubmission.get(submission.id)}
                   mode="library"
@@ -327,16 +386,17 @@ export function EditorApp({
           )
         ) : issueItems.length > 0 ? (
           <Feed>
-            {issueItems.map((item, index) => (
+            {pagedIssueItems.map((item, index) => (
               <SubmissionCard
                 key={item.id}
                 currentUserId={currentUser.id}
                 issues={snapshot.issues}
+                workingIssueId={snapshot.workingIssueId}
                 submission={item.submission}
                 issueItem={item}
                 mode="issue"
-                isFirst={index === 0}
-                isLast={index === issueItems.length - 1}
+                isFirst={issuePageStart + index === 0}
+                isLast={issuePageStart + index === issueItems.length - 1}
                 onHeartSubmission={(submissionId) =>
                   run(() => toggleSubmissionStarAction(submissionId))
                 }
@@ -404,14 +464,26 @@ export function EditorApp({
         <ProfileMenu
           currentUser={currentUser}
           onClose={() => setOverlay("none")}
+          onOpenAccount={() => setOverlay("account")}
           onOpenSync={() => setOverlay("sync")}
           onOpenAbout={() => setOverlay("about")}
+        />
+      ) : null}
+      {overlay === "account" ? (
+        <AccountDialog
+          currentUser={currentUser}
+          onClose={() => setOverlay("none")}
+          onSaved={() => {
+            setOverlay("none");
+            router.refresh();
+          }}
         />
       ) : null}
       {overlay === "issue" ? (
         <IssuePanel
           issues={snapshot.issues}
           currentIssueId={selectedIssueId}
+          workingIssueId={snapshot.workingIssueId}
           renameValue={renameValue}
           error={issueError}
           onRenameValueChange={setRenameValue}
@@ -424,6 +496,13 @@ export function EditorApp({
             setOverlay("none");
             router.push(`/app?issue=${issueId}`);
           }}
+          onSetWorkingIssue={(issueId) =>
+            startTransition(async () => {
+              await setWorkingIssueAction(issueId);
+              router.push(`/app?issue=${issueId}`);
+              setOverlay("none");
+            })
+          }
           onCreateIssue={handleCreateIssue}
         />
       ) : null}
@@ -434,6 +513,7 @@ export function EditorApp({
         <FilterSheet
           filter={filter}
           issues={snapshot.issues}
+          workingIssueId={snapshot.workingIssueId}
           onApply={setFilter}
           onClose={() => setOverlay("none")}
           onBatchAdd={(issueId, draftFilter) => {
@@ -476,6 +556,12 @@ export function EditorApp({
   function run(action: () => Promise<void>) {
     startTransition(() => {
       void action();
+    });
+  }
+
+  function scrollListToTop() {
+    requestAnimationFrame(() => {
+      listRef.current?.scrollTo({ top: 0, behavior: "auto" });
     });
   }
 
@@ -614,6 +700,62 @@ function Feed({ children }: { children: React.ReactNode }) {
   return <div>{children}</div>;
 }
 
+function paginateItems<T>(items: T[], page: number) {
+  const start = (page - 1) * PAGE_SIZE;
+  return items.slice(start, start + PAGE_SIZE);
+}
+
+function clampPage(page: number, count: number) {
+  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+  return Math.min(Math.max(page, 1), totalPages);
+}
+
+function PaginationBar({
+  count,
+  page,
+  onPageChange,
+}: {
+  count: number;
+  page: number;
+  onPageChange: (page: number) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+  const safePage = clampPage(page, count);
+  const start = count === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const end = Math.min(count, safePage * PAGE_SIZE);
+
+  return (
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#F0F0F0] bg-white px-3 py-2">
+      <div className="min-w-0 flex-1 text-left text-xs font-medium text-[#777]">
+        {start}-{end} / {count}
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          disabled={safePage <= 1}
+          onClick={() => onPageChange(safePage - 1)}
+          className="grid size-7 place-items-center rounded-lg bg-[#F5F5F5] text-[#555] disabled:opacity-35"
+          aria-label="上一页"
+        >
+          <ChevronRight className="size-3.5 rotate-180" />
+        </button>
+        <span className="w-10 text-center text-xs font-semibold text-[#555]">
+          {safePage}/{totalPages}
+        </span>
+        <button
+          type="button"
+          disabled={safePage >= totalPages}
+          onClick={() => onPageChange(safePage + 1)}
+          className="grid size-7 place-items-center rounded-lg bg-[#F5F5F5] text-[#555] disabled:opacity-35"
+          aria-label="下一页"
+        >
+          <ChevronRight className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TopBar({
   currentUser,
   onAvatarClick,
@@ -708,11 +850,13 @@ function EmptyState({
 function ProfileMenu({
   currentUser,
   onClose,
+  onOpenAccount,
   onOpenSync,
   onOpenAbout,
 }: {
   currentUser: { displayName: string; username: string };
   onClose: () => void;
+  onOpenAccount: () => void;
   onOpenSync: () => void;
   onOpenAbout: () => void;
 }) {
@@ -744,6 +888,7 @@ function ProfileMenu({
 
         <button
           type="button"
+          onClick={onOpenAccount}
           className="flex w-full items-center justify-between px-4 py-3.5 transition-colors active:bg-[#F5F5F5]"
         >
           <div className="flex items-center gap-3">
@@ -751,9 +896,6 @@ function ProfileMenu({
             <span style={{ fontSize: 14, color: "#222" }}>账户管理</span>
           </div>
           <div className="flex items-center gap-1">
-            <span style={{ fontSize: 11, color: "#FD80C2", fontWeight: 500 }}>
-              即将上线
-            </span>
             <ChevronRight size={14} className="text-[#CCC]" />
           </div>
         </button>
@@ -824,6 +966,149 @@ function ProfileMenu({
   );
 }
 
+function AccountDialog({
+  currentUser,
+  onClose,
+  onSaved,
+}: {
+  currentUser: { username: string; displayName: string };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState<ProfileInput>({
+    username: currentUser.username,
+    displayName: currentUser.displayName,
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [message, setMessage] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function update<K extends keyof ProfileInput>(key: K, value: ProfileInput[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  return (
+    <div className="absolute inset-0 z-[60] flex items-center justify-center px-5">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/35"
+        aria-label="关闭账户管理"
+        onClick={onClose}
+      />
+      <section className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium text-[#FD80C2]">ACCOUNT</p>
+            <h2 className="mt-1 text-lg font-semibold text-[#111]">账户管理</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid size-7 place-items-center rounded-full bg-[#F5F5F5]"
+            aria-label="关闭账户管理"
+          >
+            <X size={14} className="text-[#666]" />
+          </button>
+        </div>
+
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setMessage(null);
+            startTransition(async () => {
+              const result = await updateUserProfileAction(form);
+              if (!result.ok) {
+                setMessage(result.message);
+                return;
+              }
+              onSaved();
+            });
+          }}
+        >
+          <AccountField
+            label="用户名"
+            value={form.username}
+            onChange={(value) => update("username", value)}
+          />
+          <AccountField
+            label="显示名称"
+            value={form.displayName}
+            onChange={(value) => update("displayName", value)}
+          />
+
+          <div className="rounded-xl border border-[#F0F0F0] bg-[#FAFAFA] p-3">
+            <div className="mb-3 flex items-center gap-2">
+              <KeyRound className="size-4 text-[#999]" />
+              <span className="text-sm font-semibold text-[#333]">修改密码</span>
+            </div>
+            <div className="space-y-2">
+              <AccountField
+                label="当前密码"
+                type="password"
+                value={form.currentPassword}
+                onChange={(value) => update("currentPassword", value)}
+              />
+              <AccountField
+                label="新密码"
+                type="password"
+                value={form.newPassword}
+                onChange={(value) => update("newPassword", value)}
+              />
+              <AccountField
+                label="确认新密码"
+                type="password"
+                value={form.confirmPassword}
+                onChange={(value) => update("confirmPassword", value)}
+              />
+            </div>
+          </div>
+
+          {message ? (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-500">
+              {message}
+            </p>
+          ) : null}
+
+          <button
+            type="submit"
+            disabled={isPending}
+            className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {isPending ? "保存中..." : "保存账户资料"}
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function AccountField({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: "text" | "password";
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-medium text-[#777]">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 w-full rounded-xl border border-[#E8E8E8] bg-white px-3 text-sm text-[#111] outline-none focus:border-[#FD80C2]"
+      />
+    </label>
+  );
+}
+
 function AboutDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="absolute inset-0 z-[60] flex items-center justify-center px-5">
@@ -861,6 +1146,15 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
         <div className="space-y-4 py-4">
           <div className="rounded-xl bg-[#FFF8FC] p-3">
             <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[#111]">版本 1.1</p>
+              <p className="text-xs font-medium text-[#999]">2026-05-18</p>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[#555]">
+              新增分页、个人工作中刊数、点赞筛选、账户管理和吐槽排序；优化刊数加入控件、图片预览关闭方式和大库加载流畅度。
+            </p>
+          </div>
+          <div className="rounded-xl bg-[#FAFAFA] p-3">
+            <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-[#111]">版本 1.0</p>
               <p className="text-xs font-medium text-[#999]">2026-05-13</p>
             </div>
@@ -890,22 +1184,26 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
 function IssuePanel({
   issues,
   currentIssueId,
+  workingIssueId,
   renameValue,
   error,
   onRenameValueChange,
   onClose,
   onRename,
   onSelectIssue,
+  onSetWorkingIssue,
   onCreateIssue,
 }: {
   issues: { id: string; title: string }[];
   currentIssueId: string | null;
+  workingIssueId: string | null;
   renameValue: string;
   error: string | null;
   onRenameValueChange: (value: string) => void;
   onClose: () => void;
   onRename: () => void;
   onSelectIssue: (issueId: string) => void;
+  onSetWorkingIssue: (issueId: string) => void;
   onCreateIssue: () => void;
 }) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -1024,33 +1322,45 @@ function IssuePanel({
             </p>
           </div>
           {issues.map((issue) => (
-            <button
+            <div
               key={issue.id}
-              type="button"
-              onClick={() => onSelectIssue(issue.id)}
-              className="flex w-full items-center justify-between px-4 py-3.5 transition-colors active:bg-[#FFF0F8]"
+              className="flex items-center justify-between gap-2 px-4 py-3.5 transition-colors active:bg-[#FFF0F8]"
             >
-              <div className="flex items-center gap-3">
-                <div
-                  className="size-2 flex-shrink-0 rounded-full"
-                  style={{
-                    background: issue.id === currentIssueId ? "#FD80C2" : "#DDD",
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: 14,
-                    color: issue.id === currentIssueId ? "#FD80C2" : "#333",
-                    fontWeight: issue.id === currentIssueId ? 600 : 400,
-                  }}
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onSelectIssue(issue.id)}
+                  className="flex min-w-0 items-center gap-3 text-left"
                 >
-                  {issue.title}
-                </span>
+                  <div
+                    className="size-2 flex-shrink-0 rounded-full"
+                    style={{
+                      background: issue.id === currentIssueId ? "#FD80C2" : "#DDD",
+                    }}
+                  />
+                  <span
+                    className={cn(
+                      "min-w-0 text-sm",
+                      issue.id === currentIssueId ? "font-semibold" : "font-normal",
+                    )}
+                  >
+                    <IssueTitleLine
+                      title={issue.title}
+                      isWorking={issue.id === workingIssueId}
+                      active={issue.id === currentIssueId}
+                    />
+                  </span>
+                </button>
+                {issue.id !== workingIssueId ? (
+                  <SetWorkingIssueChip onClick={() => onSetWorkingIssue(issue.id)} />
+                ) : null}
               </div>
-              {issue.id === currentIssueId ? (
-                <Check size={15} style={{ color: "#FD80C2" }} />
-              ) : null}
-            </button>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {issue.id === currentIssueId ? (
+                  <Check size={15} style={{ color: "#FD80C2" }} />
+                ) : null}
+              </div>
+            </div>
           ))}
         </div>
 

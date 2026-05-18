@@ -1,4 +1,6 @@
 import { revalidatePath } from "next/cache";
+import bcrypt from "bcryptjs";
+import { validateProfileInput, type ProfileInput } from "@/lib/auth-profile";
 import { normalizeAssetBuffer } from "@/lib/image-pipeline";
 import { prisma } from "@/lib/prisma";
 import {
@@ -10,6 +12,7 @@ import {
   moveIssueItemInDirection,
   reorderIssueItemsToPosition,
   sortSubmissionsBySerialDesc,
+  sortCommentsForDisplay,
   type SubmissionFilter,
 } from "@/lib/selection-rules";
 
@@ -18,7 +21,7 @@ export type DashboardSnapshot = Awaited<ReturnType<typeof getDashboardSnapshot>>
 const submissionInclude = {
   images: { orderBy: { sortOrder: "asc" as const } },
   comments: {
-    orderBy: { createdAt: "asc" as const },
+    orderBy: [{ createdAt: "asc" as const }],
     include: {
       author: true,
       reactions: { include: { user: true } },
@@ -28,12 +31,18 @@ const submissionInclude = {
   issueItems: { include: { issue: true } },
 };
 
-export async function getDashboardSnapshot(issueId?: string) {
+export async function getDashboardSnapshot(issueId?: string, userId?: string) {
   const issues = await prisma.issue.findMany({
     orderBy: { createdAt: "desc" },
   });
+  const user = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { workingIssueId: true },
+      })
+    : null;
 
-  const selectedIssueId = issueId ?? issues[0]?.id;
+  const selectedIssueId = issueId ?? user?.workingIssueId ?? issues[0]?.id;
   const issue = selectedIssueId
     ? await prisma.issue.findUnique({
         where: { id: selectedIssueId },
@@ -60,11 +69,8 @@ export async function getDashboardSnapshot(issueId?: string) {
     ? {
         ...issue,
         items: issue.items.map((item) => ({
-          ...item,
-          submission: {
-            ...item.submission,
-            images: filterCachedImages(item.submission.images),
-          },
+        ...item,
+          submission: normalizeSubmissionForSnapshot(item.submission),
         })),
       }
     : null;
@@ -73,17 +79,25 @@ export async function getDashboardSnapshot(issueId?: string) {
     issue: issueWithCachedImages,
     issues,
     lastSync,
+    workingIssueId: user?.workingIssueId ?? null,
     submissions: sortSubmissionsBySerialDesc(
-      submissions.map((submission) => ({
-        ...submission,
-        images: filterCachedImages(submission.images),
-      })),
+      submissions.map(normalizeSubmissionForSnapshot),
     ),
   };
 }
 
 function filterCachedImages<T extends { localPath: string }>(images: T[]) {
   return filterDisplayableImages(images);
+}
+
+function normalizeSubmissionForSnapshot<
+  T extends { images: { localPath: string }[]; comments: { createdAt: Date | string; reactions: unknown[] }[] },
+>(submission: T) {
+  return {
+    ...submission,
+    images: filterCachedImages(submission.images),
+    comments: sortCommentsForDisplay(submission.comments),
+  };
 }
 
 export async function createIssue(title = formatDefaultIssueTitle()) {
@@ -168,9 +182,9 @@ export async function addSubmissionToIssue(issueId: string, submissionId: string
         issueId,
         submissionId,
         sortOrder: (maxItem?.sortOrder ?? 0) + 1,
-        confirmed: false,
+        confirmed: true,
       },
-      update: {},
+      update: { confirmed: true },
     }),
   ]);
 
@@ -180,13 +194,17 @@ export async function addSubmissionToIssue(issueId: string, submissionId: string
 export async function batchAddFilteredSubmissionsToIssue(
   issueId: string,
   filter: SubmissionFilter,
+  userId?: string,
 ) {
   const submissions = await prisma.submission.findMany({
     include: {
       issueItems: true,
+      reactions: true,
     },
   });
-  const selected = applySubmissionFilter(submissions, filter);
+  const selected = applySubmissionFilter(submissions, filter, {
+    currentUserId: userId,
+  });
 
   if (selected.length === 0) {
     return { count: 0 };
@@ -215,7 +233,7 @@ export async function batchAddFilteredSubmissionsToIssue(
           issueId,
           submissionId,
           sortOrder: nextOrder++,
-          confirmed: false,
+          confirmed: true,
         },
       }),
     );
@@ -234,13 +252,19 @@ export async function batchAddFilteredSubmissionsToIssue(
   return { count: selectedIds.length };
 }
 
-export async function batchRemoveFilteredSubmissionsFromIssue(filter: SubmissionFilter) {
+export async function batchRemoveFilteredSubmissionsFromIssue(
+  filter: SubmissionFilter,
+  userId?: string,
+) {
   const submissions = await prisma.submission.findMany({
     include: {
       issueItems: true,
+      reactions: true,
     },
   });
-  const selected = applySubmissionFilter(submissions, filter);
+  const selected = applySubmissionFilter(submissions, filter, {
+    currentUserId: userId,
+  });
 
   if (selected.length === 0) {
     return { count: 0 };
@@ -259,6 +283,66 @@ export async function batchRemoveFilteredSubmissionsFromIssue(filter: Submission
 
 export async function moveSubmissionToIssue(submissionId: string, issueId: string) {
   await addSubmissionToIssue(issueId, submissionId);
+}
+
+export async function setWorkingIssue(userId: string, issueId: string) {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { workingIssueId: issueId },
+  });
+
+  revalidatePath("/app");
+}
+
+export async function updateUserProfile(userId: string, input: ProfileInput) {
+  const validation = validateProfileInput(input);
+  if (!validation.ok) {
+    return validation;
+  }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { username: true, passwordHash: true },
+  });
+  if (!currentUser) {
+    return { ok: false as const, message: "用户不存在" };
+  }
+
+  const duplicate = await prisma.user.findFirst({
+    where: {
+      username: validation.data.username,
+      id: { not: userId },
+    },
+    select: { id: true },
+  });
+  if (duplicate) {
+    return { ok: false as const, message: "这个用户名已经被注册了" };
+  }
+
+  const data: { username: string; displayName: string; passwordHash?: string } = {
+    username: validation.data.username,
+    displayName: validation.data.displayName,
+  };
+
+  if (validation.data.newPassword) {
+    const valid = await bcrypt.compare(
+      validation.data.currentPassword,
+      currentUser.passwordHash,
+    );
+    if (!valid) {
+      return { ok: false as const, message: "当前密码不正确" };
+    }
+
+    data.passwordHash = await bcrypt.hash(validation.data.newPassword, 10);
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data,
+  });
+
+  revalidatePath("/app");
+  return { ok: true as const };
 }
 
 export async function removeSubmissionFromIssue(submissionId: string) {

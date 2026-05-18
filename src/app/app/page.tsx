@@ -9,7 +9,7 @@ export default async function AppPage({
 }) {
   const user = await requireCurrentUser();
   const params = await searchParams;
-  const snapshot = await getDashboardSnapshot(params?.issue);
+  const snapshot = await getDashboardSnapshot(params?.issue, user.id);
 
   return <EditorApp currentUser={user} snapshot={snapshot} />;
 }

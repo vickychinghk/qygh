@@ -13,6 +13,7 @@ import {
   SCHOOL_OPTIONS,
   reorderIssueItemsToPosition,
   selectFinalCommentState,
+  sortCommentsForDisplay,
   sortImagesForEditing,
   sortSubmissionsBySerialDesc,
 } from "@/lib/selection-rules";
@@ -211,6 +212,7 @@ describe("applySubmissionFilter", () => {
       consentGranted: true,
       submittedAt: new Date("2026-05-10T12:00:00+08:00"),
       issueItems: [{ issueId: "i1", confirmed: true }],
+      reactions: [{ userId: "u1" }],
       serialNumber: "3",
     },
     {
@@ -219,6 +221,7 @@ describe("applySubmissionFilter", () => {
       consentGranted: false,
       submittedAt: new Date("2026-05-11T12:00:00+08:00"),
       issueItems: [],
+      reactions: [{ userId: "u2" }],
       serialNumber: "2",
     },
   ];
@@ -236,6 +239,52 @@ describe("applySubmissionFilter", () => {
         serialTo: "3",
       }).map((submission) => submission.id),
     ).toEqual(["a"]);
+  });
+
+  it("filters submissions liked or not liked by the current editor", () => {
+    expect(
+      applySubmissionFilter(
+        submissions,
+        { reactionStatus: "liked" },
+        { currentUserId: "u1" },
+      ).map((submission) => submission.id),
+    ).toEqual(["a"]);
+
+    expect(
+      applySubmissionFilter(
+        submissions,
+        { reactionStatus: "notLiked" },
+        { currentUserId: "u1" },
+      ).map((submission) => submission.id),
+    ).toEqual(["b"]);
+  });
+});
+
+describe("sortCommentsForDisplay", () => {
+  it("puts comments with more likes first, then keeps older comments first", () => {
+    const comments = [
+      {
+        id: "new-two-likes",
+        createdAt: new Date("2026-05-12T11:00:00+08:00"),
+        reactions: [{ userId: "u1" }, { userId: "u2" }],
+      },
+      {
+        id: "old-one-like",
+        createdAt: new Date("2026-05-12T09:00:00+08:00"),
+        reactions: [{ userId: "u3" }],
+      },
+      {
+        id: "old-two-likes",
+        createdAt: new Date("2026-05-12T10:00:00+08:00"),
+        reactions: [{ userId: "u4" }, { userId: "u5" }],
+      },
+    ];
+
+    expect(sortCommentsForDisplay(comments).map((comment) => comment.id)).toEqual([
+      "old-two-likes",
+      "new-two-likes",
+      "old-one-like",
+    ]);
   });
 });
 

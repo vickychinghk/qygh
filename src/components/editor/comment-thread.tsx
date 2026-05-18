@@ -12,6 +12,7 @@ type Comment = {
   selected: boolean;
   source: string;
   authorId: string | null;
+  createdAt?: Date | string;
   author?: { displayName: string } | null;
   reactions: {
     id: string;

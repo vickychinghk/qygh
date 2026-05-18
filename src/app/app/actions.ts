@@ -13,14 +13,17 @@ import {
   renameIssue,
   removeSubmissionFromIssue,
   selectFinalComment,
+  setWorkingIssue,
   setSubmissionImageEnabled,
   setSubmissionIssueConfirmed,
   toggleCommentStar,
   toggleSubmissionStar,
   updateComment,
+  updateUserProfile,
   updateIssueItemSortOrder,
   updateSubmissionSchool,
 } from "@/lib/data";
+import type { ProfileInput } from "@/lib/auth-profile";
 import { requireCurrentUser, signOut } from "@/lib/auth";
 import {
   clearBusinessData,
@@ -71,15 +74,15 @@ export async function batchAddFilteredSubmissionsToIssueAction(
   issueId: string,
   filter: SubmissionFilter,
 ) {
-  await requireCurrentUser();
-  return batchAddFilteredSubmissionsToIssue(issueId, filter);
+  const user = await requireCurrentUser();
+  return batchAddFilteredSubmissionsToIssue(issueId, filter, user.id);
 }
 
 export async function batchRemoveFilteredSubmissionsFromIssueAction(
   filter: SubmissionFilter,
 ) {
-  await requireCurrentUser();
-  return batchRemoveFilteredSubmissionsFromIssue(filter);
+  const user = await requireCurrentUser();
+  return batchRemoveFilteredSubmissionsFromIssue(filter, user.id);
 }
 
 export async function moveSubmissionToIssueAction(
@@ -88,6 +91,16 @@ export async function moveSubmissionToIssueAction(
 ) {
   await requireCurrentUser();
   await moveSubmissionToIssue(submissionId, issueId);
+}
+
+export async function setWorkingIssueAction(issueId: string) {
+  const user = await requireCurrentUser();
+  await setWorkingIssue(user.id, issueId);
+}
+
+export async function updateUserProfileAction(input: ProfileInput) {
+  const user = await requireCurrentUser();
+  return updateUserProfile(user.id, input);
 }
 
 export async function removeSubmissionFromIssueAction(submissionId: string) {

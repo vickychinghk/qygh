@@ -8,14 +8,16 @@ datasource db {
 }
 
 model User {
-  id           String     @id @default(cuid())
-  username     String     @unique
-  displayName  String
-  passwordHash String
-  createdAt    DateTime   @default(now())
-  comments     Comment[]
-  reactions    Reaction[]
-  selections   Selection[]
+  id             String      @id @default(cuid())
+  username       String      @unique
+  displayName    String
+  passwordHash   String
+  workingIssueId String?
+  createdAt      DateTime    @default(now())
+  comments       Comment[]
+  reactions      Reaction[]
+  selections     Selection[]
+  workingIssue   Issue?      @relation(fields: [workingIssueId], references: [id], onDelete: SetNull)
 }
 
 model Submission {
@@ -60,12 +62,13 @@ model SubmissionImage {
 }
 
 model Issue {
-  id        String      @id @default(cuid())
-  title     String
-  monthKey  String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  items     IssueItem[]
+  id           String      @id @default(cuid())
+  title        String
+  monthKey     String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  items        IssueItem[]
+  workingUsers User[]
 }
 
 model IssueItem {

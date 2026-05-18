@@ -19,9 +19,9 @@ import {
 } from "lucide-react";
 import { CommentThread } from "@/components/editor/comment-thread";
 import { getAssetIssueDetail } from "@/lib/asset-details";
+import { IssueMenuButton, IssueTitleLine } from "@/components/editor/issue-controls";
 import { cn } from "@/lib/utils";
 import {
-  getSubmissionIssueLabel,
   hasUserReacted,
   parseIssueSortOrderInput,
   SCHOOL_OPTIONS,
@@ -75,6 +75,7 @@ type Submission = {
 export function SubmissionCard({
   currentUserId,
   issues,
+  workingIssueId,
   submission,
   issueItem,
   mode,
@@ -98,6 +99,7 @@ export function SubmissionCard({
 }: {
   currentUserId: string;
   issues: Issue[];
+  workingIssueId: string | null;
   submission: Submission;
   issueItem?: { id: string; confirmed: boolean; sortOrder: number } | null;
   mode: "library" | "issue";
@@ -162,6 +164,7 @@ export function SubmissionCard({
         mode={mode}
         submission={submission}
         issues={issues}
+        workingIssueId={workingIssueId}
         onUpdateSchool={onUpdateSchool}
         onAddToIssue={onAddToIssue}
         onMoveToIssue={onMoveToIssue}
@@ -402,8 +405,14 @@ function ImageLightbox({
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-[60] mx-auto flex max-w-md flex-col bg-black/95">
-      <div className="flex shrink-0 items-center justify-between px-4 py-3">
+    <div
+      className="fixed inset-0 z-[60] mx-auto flex max-w-md flex-col bg-black/95"
+      onClick={onClose}
+    >
+      <div
+        className="flex shrink-0 items-center justify-between px-4 py-3"
+        onClick={(event) => event.stopPropagation()}
+      >
         <button
           type="button"
           onClick={onClose}
@@ -444,7 +453,10 @@ function ImageLightbox({
         {onPrev ? (
           <button
             type="button"
-            onClick={onPrev}
+            onClick={(event) => {
+              event.stopPropagation();
+              onPrev();
+            }}
             className="absolute left-2 top-1/2 z-10 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white"
             aria-label="上一张"
           >
@@ -454,7 +466,10 @@ function ImageLightbox({
         {onNext ? (
           <button
             type="button"
-            onClick={onNext}
+            onClick={(event) => {
+              event.stopPropagation();
+              onNext();
+            }}
             className="absolute right-2 top-1/2 z-10 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white"
             aria-label="下一张"
           >
@@ -463,25 +478,33 @@ function ImageLightbox({
         ) : null}
         <div className="flex min-h-full items-center justify-center px-12 py-4">
           {unsupported ? (
-            <div className="relative h-48 w-full max-w-xs overflow-hidden rounded-md">
+            <div
+              className="relative h-48 w-full max-w-xs overflow-hidden rounded-md"
+              onClick={(event) => event.stopPropagation()}
+            >
               <AssetPlaceholder kind={image.assetKind} label={unsupported} />
             </div>
           ) : (
-            <Image
-              src={image.localPath}
-              alt="投稿图片预览"
-              width={1200}
-              height={1600}
-              className={cn(
-                "h-auto max-h-none w-auto max-w-full rounded-md object-contain",
-                !enabled && "opacity-50 grayscale",
-              )}
-            />
+            <div onClick={(event) => event.stopPropagation()}>
+              <Image
+                src={image.localPath}
+                alt="投稿图片预览"
+                width={1200}
+                height={1600}
+                className={cn(
+                  "h-auto max-h-none w-auto max-w-full rounded-md object-contain",
+                  !enabled && "opacity-50 grayscale",
+                )}
+              />
+            </div>
           )}
         </div>
       </div>
 
-      <div className="flex shrink-0 justify-center pb-6 pt-2">
+      <div
+        className="flex shrink-0 justify-center pb-6 pt-2"
+        onClick={(event) => event.stopPropagation()}
+      >
         <span className="rounded-full border border-primary/35 bg-primary/15 px-3 py-1 text-[11px] text-primary">
           {enabled ? "导出时将包含此图片" : "导出时不包含此图片"}
         </span>
@@ -569,6 +592,7 @@ function SubmissionMeta({
   mode,
   submission,
   issues,
+  workingIssueId,
   onUpdateSchool,
   onAddToIssue,
   onMoveToIssue,
@@ -577,6 +601,7 @@ function SubmissionMeta({
   mode: "library" | "issue";
   submission: Submission;
   issues: Issue[];
+  workingIssueId: string | null;
   onUpdateSchool: (submissionId: string, school: string) => void | Promise<void>;
   onAddToIssue: (issueId: string, submissionId: string) => void | Promise<void>;
   onMoveToIssue: (submissionId: string, issueId: string) => void | Promise<void>;
@@ -595,7 +620,7 @@ function SubmissionMeta({
 
   return (
     <div className="relative z-40 px-3 py-2">
-      <div className="relative flex items-start justify-between gap-2">
+      <div className="relative flex items-center justify-between gap-2">
         <div className="relative min-w-0">
           <button
             type="button"
@@ -682,6 +707,7 @@ function SubmissionMeta({
           mode={mode}
           submission={submission}
           issues={issues}
+          workingIssueId={workingIssueId}
           onAddToIssue={onAddToIssue}
           onMoveToIssue={onMoveToIssue}
           onRemoveFromIssue={onRemoveFromIssue}
@@ -696,6 +722,7 @@ function IssuePopover({
   mode,
   submission,
   issues,
+  workingIssueId,
   onAddToIssue,
   onMoveToIssue,
   onRemoveFromIssue,
@@ -703,6 +730,7 @@ function IssuePopover({
   mode: "library" | "issue";
   submission: Submission;
   issues: Issue[];
+  workingIssueId: string | null;
   onAddToIssue: (issueId: string, submissionId: string) => void | Promise<void>;
   onMoveToIssue: (submissionId: string, issueId: string) => void | Promise<void>;
   onRemoveFromIssue: (submissionId: string) => void | Promise<void>;
@@ -710,24 +738,43 @@ function IssuePopover({
   const [open, setOpen] = useState(false);
   const assigned = submission.issueItems[0];
   const assignedIssueId = assigned?.issueId;
+  const assignedIssue = assignedIssueId
+    ? issues.find((issue) => issue.id === assignedIssueId)
+    : null;
+  const workingIssue = issues.find((issue) => issue.id === workingIssueId);
+
+  function addToIssue(issueId: string) {
+    if (mode === "library" && !assigned) {
+      void onAddToIssue(issueId, submission.id);
+    } else {
+      void onMoveToIssue(submission.id, issueId);
+    }
+    setOpen(false);
+  }
 
   return (
-    <div className="relative max-w-[52%] shrink-0">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={cn(
-          "flex max-w-full items-center gap-1 py-1 text-[12px] font-medium",
+    <div className="relative flex max-w-[64%] shrink-0 items-center gap-1.5">
+      {assigned ? (
+        <IssueAssignmentChip
           assigned
-            ? "text-primary"
-            : "text-[#646a73]",
-        )}
-      >
-        <span className="truncate">{getSubmissionIssueLabel(submission.issueItems)}</span>
-        <ChevronDown
-          className={cn("size-3 shrink-0 transition-transform", open && "rotate-180")}
+          issueTitle={assignedIssue?.title ?? assigned.issue.title}
+          isWorking={assignedIssueId === workingIssueId}
+          open={open}
+          onClick={() => setOpen((current) => !current)}
         />
-      </button>
+      ) : (
+        <IssueAssignmentChip
+          open={open}
+          onClick={() => {
+            if (workingIssue) {
+              addToIssue(workingIssue.id);
+              return;
+            }
+            setOpen(true);
+          }}
+          onArrowClick={() => setOpen((current) => !current)}
+        />
+      )}
 
       {open ? (
         <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-60 overflow-hidden rounded-xl bg-white shadow-[0_8px_28px_rgba(31,35,41,0.14)]">
@@ -735,29 +782,20 @@ function IssuePopover({
             {issues.map((issue) => {
               const active = issue.id === assignedIssueId;
               return (
-                <button
+                <IssueMenuButton
                   key={issue.id}
-                  type="button"
+                  issue={issue}
+                  active={active}
+                  isWorking={issue.id === workingIssueId}
                   onClick={() => {
                     if (!active) {
-                      if (mode === "library" && !assigned) {
-                        void onAddToIssue(issue.id, submission.id);
-                      } else {
-                        void onMoveToIssue(submission.id, issue.id);
-                      }
+                      addToIssue(issue.id);
+                    } else {
+                      setOpen(false);
                     }
-                    setOpen(false);
                   }}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-colors",
-                    active
-                      ? "bg-[#fff0f8] font-semibold text-primary"
-                      : "text-[#1f2329] active:bg-[#f5f6f7]",
-                  )}
-                >
-                  <span className="truncate">{issue.title}</span>
-                  {active ? <Check className="size-3 shrink-0" /> : null}
-                </button>
+                  right={active ? <Check className="size-3 shrink-0" /> : null}
+                />
               );
             })}
           </div>
@@ -777,6 +815,60 @@ function IssuePopover({
             </div>
           ) : null}
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+function IssueAssignmentChip({
+  assigned = false,
+  issueTitle,
+  isWorking = false,
+  open,
+  onClick,
+  onArrowClick,
+}: {
+  assigned?: boolean;
+  issueTitle?: string;
+  isWorking?: boolean;
+  open: boolean;
+  onClick: () => void;
+  onArrowClick?: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-6 min-w-0 shrink-0 items-center overflow-hidden rounded-md text-[12px] font-semibold",
+        assigned ? "text-primary" : "bg-[#FFF0F8] text-primary",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "flex h-6 min-w-0 items-center gap-1 rounded-l-md px-1.5 active:bg-[#FFE4F4]",
+          assigned && "rounded-r-md",
+        )}
+      >
+        {assigned && issueTitle ? (
+          <IssueTitleLine title={issueTitle} isWorking={isWorking} active />
+        ) : null}
+        {!assigned ? <span>+ 加入</span> : null}
+      </button>
+      {!assigned ? (
+        <>
+          <span className="h-6 w-px bg-[#FECDE8]" />
+          <button
+            type="button"
+            onClick={onArrowClick ?? onClick}
+            className="grid h-6 w-5 shrink-0 place-items-center rounded-r-md active:bg-[#FFE4F4]"
+            aria-label="展开刊数列表"
+          >
+            <ChevronDown
+              className={cn("size-3 transition-transform", open && "rotate-180")}
+            />
+          </button>
+        </>
       ) : null}
     </div>
   );

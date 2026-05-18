@@ -17,6 +17,7 @@ export type SubmissionFilter = {
   authorized?: "all" | "yes" | "no";
   assignStatus?: "all" | "assigned" | "unassigned";
   adoptStatus?: "all" | "adopted" | "notAdopted";
+  reactionStatus?: "all" | "liked" | "notLiked";
   dateFrom?: string;
   dateTo?: string;
   serialFrom?: string;
@@ -78,6 +79,19 @@ export function sortSubmissionsBySerialDesc<T extends { serialNumber: string | n
   });
 }
 
+export function sortCommentsForDisplay<
+  T extends { createdAt: Date | string; reactions: unknown[] },
+>(comments: T[]) {
+  return [...comments].sort((a, b) => {
+    const reactionDelta = b.reactions.length - a.reactions.length;
+    if (reactionDelta !== 0) {
+      return reactionDelta;
+    }
+
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
+}
+
 export function sortImagesForEditing<
   T extends { enabled?: boolean | null; updatedAt?: Date | string | null; sortOrder?: number },
 >(images: T[]) {
@@ -117,8 +131,13 @@ export function applySubmissionFilter<
     submittedAt: Date | string;
     serialNumber: string | null;
     issueItems: { issueId?: string; confirmed?: boolean }[];
+    reactions?: { userId?: string | null }[];
   },
->(submissions: T[], filter: SubmissionFilter) {
+>(
+  submissions: T[],
+  filter: SubmissionFilter,
+  context: { currentUserId?: string } = {},
+) {
   return submissions.filter((submission) => {
     if (filter.school && !submission.school.includes(filter.school)) {
       return false;
@@ -147,6 +166,23 @@ export function applySubmissionFilter<
 
     if (filter.adoptStatus === "notAdopted" && adopted) {
       return false;
+    }
+
+    if (
+      context.currentUserId &&
+      filter.reactionStatus &&
+      filter.reactionStatus !== "all"
+    ) {
+      const liked = hasUserReacted(
+        submission.reactions ?? [],
+        context.currentUserId,
+      );
+      if (filter.reactionStatus === "liked" && !liked) {
+        return false;
+      }
+      if (filter.reactionStatus === "notLiked" && liked) {
+        return false;
+      }
     }
 
     const submittedDate = formatDateKey(submission.submittedAt);

@@ -3,6 +3,7 @@
 import { Check, ChevronDown, X } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { IssueMenuButton } from "@/components/editor/issue-controls";
 import { SCHOOL_OPTIONS, type SubmissionFilter } from "@/lib/selection-rules";
 import { getSchoolTheme } from "@/lib/school-theme";
 
@@ -11,6 +12,7 @@ export const DEFAULT_SUBMISSION_FILTER: Required<SubmissionFilter> = {
   authorized: "all",
   assignStatus: "all",
   adoptStatus: "all",
+  reactionStatus: "all",
   dateFrom: "",
   dateTo: "",
   serialFrom: "",
@@ -26,6 +28,7 @@ type MathChallenge = { left: number; right: number };
 export function FilterSheet({
   filter,
   issues,
+  workingIssueId,
   onApply,
   onClose,
   onBatchAdd,
@@ -33,6 +36,7 @@ export function FilterSheet({
 }: {
   filter: Required<SubmissionFilter>;
   issues: Issue[];
+  workingIssueId: string | null;
   onApply: (filter: Required<SubmissionFilter>) => void;
   onClose: () => void;
   onBatchAdd: (issueId: string, filter: Required<SubmissionFilter>) => void;
@@ -53,6 +57,7 @@ export function FilterSheet({
         draft.authorized !== "all",
         draft.assignStatus !== "all",
         draft.adoptStatus !== "all",
+        draft.reactionStatus !== "all",
         draft.dateFrom || draft.dateTo,
         draft.serialFrom || draft.serialTo,
       ].filter(Boolean).length,
@@ -204,6 +209,18 @@ export function FilterSheet({
               setDraft((current) => ({ ...current, adoptStatus }))
             }
           />
+          <Segmented
+            label="点赞状态"
+            value={draft.reactionStatus}
+            options={[
+              ["all", "全部"],
+              ["liked", "我已点赞"],
+              ["notLiked", "我未点赞"],
+            ]}
+            onChange={(reactionStatus) =>
+              setDraft((current) => ({ ...current, reactionStatus }))
+            }
+          />
 
           <Field label="飞书序号范围">
             <div className="flex items-center gap-2">
@@ -304,9 +321,11 @@ export function FilterSheet({
                 <X size={13} style={{ color: "#FD80C2", opacity: 0.55 }} />
               </button>
               {issues.map((issue) => (
-                <button
+                <IssueMenuButton
                   key={issue.id}
-                  type="button"
+                  issue={issue}
+                  isWorking={issue.id === workingIssueId}
+                  className="rounded-none border-t border-[#F0F0F0] px-4 py-2.5"
                   onClick={() =>
                     openBatchConfirm({
                       kind: "add",
@@ -314,13 +333,8 @@ export function FilterSheet({
                       issueTitle: issue.title,
                     })
                   }
-                  className="flex w-full items-center justify-between border-t border-[#F0F0F0] px-4 py-2.5 transition-colors active:bg-[#FFF0F8]"
-                >
-                  <span style={{ fontSize: 13, color: "#333", fontWeight: 500 }}>
-                    {issue.title}
-                  </span>
-                  <Check size={13} style={{ color: "#FD80C2", opacity: 0.5 }} />
-                </button>
+                  right={<Check size={13} style={{ color: "#FD80C2", opacity: 0.5 }} />}
+                />
               ))}
             </div>
           ) : null}
