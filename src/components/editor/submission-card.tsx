@@ -757,8 +757,10 @@ function IssuePopover({
       {assigned ? (
         <IssueAssignmentChip
           assigned
-          issueTitle={assignedIssue?.title ?? assigned.issue.title}
-          isWorking={assignedIssueId === workingIssueId}
+          issueTitle={
+            mode === "issue" ? "本刊" : assignedIssue?.title ?? assigned.issue.title
+          }
+          isWorking={mode !== "issue" && assignedIssueId === workingIssueId}
           open={open}
           onClick={() => setOpen((current) => !current)}
         />

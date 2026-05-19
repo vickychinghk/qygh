@@ -277,8 +277,15 @@ export function EditorApp({
             onClick={() => setOverlay("issue")}
             className="flex items-center gap-1.5 px-4 py-3 transition-colors active:bg-[#FFF0F8]"
           >
-            <span style={{ fontSize: 15, fontWeight: 600, color: "#111" }}>
-              本刊
+            <span className="min-w-0" style={{ fontSize: 15, fontWeight: 600 }}>
+              <IssueTitleLine
+                title={snapshot.issue?.title ?? "未选择刊数"}
+                isWorking={
+                  Boolean(snapshot.issue?.id) &&
+                  snapshot.issue?.id === snapshot.workingIssueId
+                }
+                active
+              />
             </span>
             <ChevronDown size={15} style={{ color: "#FD80C2" }} />
           </button>
